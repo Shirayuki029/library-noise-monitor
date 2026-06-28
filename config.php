@@ -2,14 +2,23 @@
 // config.php
 session_start();
 
+// ===== RAILWAY DATABASE CONFIGURATION =====
+// Use Railway's environment variables
+$host = getenv('MYSQLHOST') ?: 'reseau.proxy.rlwy.net';
+$port = getenv('MYSQLPORT') ?: 46901;
+$dbname = getenv('MYSQLDATABASE') ?: 'railway';
+$user = getenv('MYSQLUSER') ?: 'root';
+$pass = getenv('MYSQLPASSWORD') ?: 'BNCivmYpPRgXGUFtHXiaZkBQNhmVtvIY';
+
 // Database configuration
-define('DB_HOST', 'localhost');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_NAME', 'noise_monitor');
+define('DB_HOST', $host);
+define('DB_USER', $user);
+define('DB_PASS', $pass);
+define('DB_NAME', $dbname);
+define('DB_PORT', $port);
 
 // OTP Configuration
-define('OTP_EXPIRY', 120); // 5 minutes
+define('OTP_EXPIRY', 120); // 2 minutes
 
 // ===== ADDED FOR C1: SESSION TIMEOUT =====
 define('SESSION_TIMEOUT', 1800); // 30 minutes (1800 seconds)
@@ -39,7 +48,7 @@ function checkSessionTimeout() {
 
 // Database connection
 function getDB() {
-    $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+    $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
     if ($conn->connect_error) {
         die("Connection failed: " . $conn->connect_error);
     }
