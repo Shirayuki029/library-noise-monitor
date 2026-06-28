@@ -2,19 +2,13 @@
 // dashboard.php - Fixed with database connection
 require_once 'config.php';
 
-// Check authentication
+// Check authentication - SIMPLE VERSION (no validateSession)
 if (!isAuthenticated()) {
     header("Location: login.php");
     exit();
 }
 
-// Validate session (one login only)
-if (!validateSession()) {
-    session_unset();
-    session_destroy();
-    header("Location: login.php?message=logged_out_elsewhere");
-    exit();
-}
+// REMOVED: validateSession() check - no longer needed
 
 $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 $user_id = $_SESSION['user_id'];
