@@ -1,8 +1,17 @@
 {
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "nixPkgs": [
+      "php",
+      "phpExtensions.mysqli",
+      "phpExtensions.pdo_mysql",
+      "phpExtensions.curl",
+      "phpExtensions.json",
+      "phpExtensions.mbstring",
+      "phpExtensions.session"
+    ]
   },
   "start": {
-    "web": "php smart_library/login.php"
+    "web": "php -S 0.0.0.0:$PORT -t public"
   }
 }
