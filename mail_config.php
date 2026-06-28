@@ -4,7 +4,7 @@
 
 // Your Gmail credentials
 define('SMTP_EMAIL', 'albanodc2006@gmail.com');
-define('SMTP_PASSWORD', 'bewg pbdy ftxe uiyn');
+define('SMTP_PASSWORD', 'bewgpbdyftxeuiyn');
 define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
 
