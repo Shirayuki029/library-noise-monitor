@@ -8,15 +8,17 @@ define('SMTP_PASSWORD', 'bewgpbdyftxeuiyn'); // No spaces!
 define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
 
-// Function to send OTP email using PHPMailer
+// ============================================================
+// FIX: PHPMailer files are in ROOT directory, not in /PHPMailer/src/
+// ============================================================
+
 function sendOTPEmail($to_email, $username, $otp) {
     try {
-        // ===== FIX: PHPMailer is at ROOT level =====
-        $base_dir = __DIR__ . '/../PHPMailer/src/';
-        
-        require_once $base_dir . 'Exception.php';
-        require_once $base_dir . 'PHPMailer.php';
-        require_once $base_dir . 'SMTP.php';
+        // PHPMailer files are in the same directory as this file (root)
+        // So we just require them directly
+        require_once __DIR__ . '/Exception.php';
+        require_once __DIR__ . '/PHPMailer.php';
+        require_once __DIR__ . '/SMTP.php';
         
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         
@@ -106,12 +108,10 @@ Library Noise Monitor System
 
 function sendPasswordChangeOTP($to_email, $username, $otp) {
     try {
-        // ===== FIX: PHPMailer is at ROOT level =====
-        $base_dir = __DIR__ . '/../PHPMailer/src/';
-        
-        require_once $base_dir . 'Exception.php';
-        require_once $base_dir . 'PHPMailer.php';
-        require_once $base_dir . 'SMTP.php';
+        // PHPMailer files are in the same directory as this file (root)
+        require_once __DIR__ . '/Exception.php';
+        require_once __DIR__ . '/PHPMailer.php';
+        require_once __DIR__ . '/SMTP.php';
         
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         
