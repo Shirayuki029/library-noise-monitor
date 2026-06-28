@@ -9,16 +9,17 @@ define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
 
 // ============================================================
-// FIX: PHPMailer files are in ROOT directory, not in /PHPMailer/src/
+// FIX: PHPMailer files are in /PHPMailer/src/ directory
 // ============================================================
 
 function sendOTPEmail($to_email, $username, $otp) {
     try {
-        // PHPMailer files are in the same directory as this file (root)
-        // So we just require them directly
-        require_once __DIR__ . '/Exception.php';
-        require_once __DIR__ . '/PHPMailer.php';
-        require_once __DIR__ . '/SMTP.php';
+        // PHPMailer files are in /PHPMailer/src/ directory
+        $base_dir = __DIR__ . '/PHPMailer/src/';
+        
+        require_once $base_dir . 'Exception.php';
+        require_once $base_dir . 'PHPMailer.php';
+        require_once $base_dir . 'SMTP.php';
         
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         
@@ -56,7 +57,7 @@ function sendOTPEmail($to_email, $username, $otp) {
                     <p>Hello <strong>$username</strong>,</p>
                     <p>Enter the following OTP code to complete your login:</p>
                     <div class='otp'>$otp</div>
-                    <p>This OTP will expire in <strong>2 minutes</strong>.</p>
+                    <p>This OTP will expire in <strong>5 minutes</strong>.</p>
                     <p class='info'>You have <strong>3 attempts</strong> to enter the correct OTP.</p>
                     <p class='warning'>⚠️ If you didn't request this, please ignore this email.</p>
                     <div class='footer'>This is an automated message. Do not reply to this email.</div>
@@ -64,7 +65,7 @@ function sendOTPEmail($to_email, $username, $otp) {
             </body>
             </html>
         ";
-        $mail->AltBody = "Your OTP code is: $otp\n\nThis OTP will expire in 2 minutes.\nYou have 3 attempts to enter the correct OTP.\n\nLibrary Noise Monitor System";
+        $mail->AltBody = "Your OTP code is: $otp\n\nThis OTP will expire in 5 minutes.\nYou have 3 attempts to enter the correct OTP.\n\nLibrary Noise Monitor System";
         
         return $mail->send();
         
@@ -86,7 +87,7 @@ Hello $username,
 
 Your OTP code is: $otp
 
-This OTP will expire in 2 minutes.
+This OTP will expire in 5 minutes.
 You have 3 attempts to enter the correct OTP.
 
 If you didn't request this, please ignore this email.
@@ -108,10 +109,12 @@ Library Noise Monitor System
 
 function sendPasswordChangeOTP($to_email, $username, $otp) {
     try {
-        // PHPMailer files are in the same directory as this file (root)
-        require_once __DIR__ . '/Exception.php';
-        require_once __DIR__ . '/PHPMailer.php';
-        require_once __DIR__ . '/SMTP.php';
+        // PHPMailer files are in /PHPMailer/src/ directory
+        $base_dir = __DIR__ . '/PHPMailer/src/';
+        
+        require_once $base_dir . 'Exception.php';
+        require_once $base_dir . 'PHPMailer.php';
+        require_once $base_dir . 'SMTP.php';
         
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         
@@ -149,7 +152,7 @@ function sendPasswordChangeOTP($to_email, $username, $otp) {
                     <p>Hello <strong>$username</strong>,</p>
                     <p>You requested to change your password. Enter the following OTP code to proceed:</p>
                     <div class='otp'>$otp</div>
-                    <p>This OTP will expire in <strong>2 minutes</strong>.</p>
+                    <p>This OTP will expire in <strong>5 minutes</strong>.</p>
                     <p class='info'>You have <strong>3 attempts</strong> to enter the correct OTP.</p>
                     <p class='warning'>⚠️ If you didn't request this, please ignore this email.</p>
                     <div class='footer'>This is an automated message. Do not reply to this email.</div>
@@ -157,7 +160,7 @@ function sendPasswordChangeOTP($to_email, $username, $otp) {
             </body>
             </html>
         ";
-        $mail->AltBody = "Password Change OTP: $otp\n\nThis OTP will expire in 2 minutes.\nYou have 3 attempts to enter the correct OTP.\n\nLibrary Noise Monitor System";
+        $mail->AltBody = "Password Change OTP: $otp\n\nThis OTP will expire in 5 minutes.\nYou have 3 attempts to enter the correct OTP.\n\nLibrary Noise Monitor System";
         
         return $mail->send();
         
@@ -179,7 +182,7 @@ Hello $username,
 You requested to change your password.
 Your OTP code is: $otp
 
-This OTP will expire in 2 minutes.
+This OTP will expire in 5 minutes.
 You have 3 attempts to enter the correct OTP.
 
 If you didn't request this, please ignore this email.
