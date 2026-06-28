@@ -1,6 +1,5 @@
 <?php
-// mail_config.php - Simple version using cURL with SendGrid
-// NO PHPMailer required!
+// mail_config.php - SendGrid version for Railway
 
 function sendOTPEmail($to_email, $username, $otp) {
     // Check if email is valid
@@ -9,19 +8,16 @@ function sendOTPEmail($to_email, $username, $otp) {
         return false;
     }
     
-    // Try SendGrid first (works best on Railway)
+    // Get SendGrid API key from environment
     $api_key = getenv('SENDGRID_API_KEY');
     
-    if (!empty($api_key)) {
-        return sendOTPEmailSendGrid($to_email, $username, $otp, $api_key);
+    // If no API key, log error
+    if (empty($api_key)) {
+        error_log("SENDGRID_API_KEY not found in environment variables!");
+        error_log("Please add SendGrid add-on in Railway dashboard.");
+        return false;
     }
     
-    // Fallback to PHP mail() if SendGrid not available
-    return sendOTPEmailMail($to_email, $username, $otp);
-}
-
-// SendGrid version (recommended for Railway)
-function sendOTPEmailSendGrid($to_email, $username, $otp, $api_key) {
     $data = [
         'personalizations' => [
             [
@@ -30,6 +26,7 @@ function sendOTPEmailSendGrid($to_email, $username, $otp, $api_key) {
             ]
         ],
         'from' => ['email' => 'noreply@librarymonitor.com', 'name' => 'Library Noise Monitor'],
+        'reply_to' => ['email' => 'noreply@librarymonitor.com', 'name' => 'Library Noise Monitor'],
         'content' => [
             [
                 'type' => 'text/plain',
@@ -46,28 +43,23 @@ function sendOTPEmailSendGrid($to_email, $username, $otp, $api_key) {
         'Content-Type: application/json'
     ]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
     curl_close($ch);
     
     if ($http_code === 202) {
-        error_log("OTP email sent via SendGrid to: " . $to_email);
+        error_log("✅ OTP email sent via SendGrid to: " . $to_email);
         return true;
     } else {
-        error_log("SendGrid error: HTTP $http_code - " . substr($response, 0, 200));
+        error_log("❌ SendGrid error: HTTP $http_code - " . substr($response, 0, 500));
+        if (!empty($error)) {
+            error_log("cURL error: " . $error);
+        }
         return false;
     }
-}
-
-// Fallback using PHP mail()
-function sendOTPEmailMail($to_email, $username, $otp) {
-    $subject = "🔐 Your OTP Code - Library Noise Monitor";
-    $message = "Hello {$username}!\n\nYour OTP verification code is: {$otp}\n\nThis code will expire in 5 minutes.\n\n---\nLibrary Noise Monitor System";
-    $headers = "From: noreply@librarymonitor.com\r\n";
-    $headers .= "Reply-To: noreply@librarymonitor.com\r\n";
-    
-    return mail($to_email, $subject, $message, $headers);
 }
 
 // Password change OTP
@@ -79,14 +71,11 @@ function sendPasswordChangeOTP($to_email, $username, $otp) {
     
     $api_key = getenv('SENDGRID_API_KEY');
     
-    if (!empty($api_key)) {
-        return sendPasswordChangeOTPSendGrid($to_email, $username, $otp, $api_key);
+    if (empty($api_key)) {
+        error_log("SENDGRID_API_KEY not found!");
+        return false;
     }
     
-    return sendPasswordChangeOTPMail($to_email, $username, $otp);
-}
-
-function sendPasswordChangeOTPSendGrid($to_email, $username, $otp, $api_key) {
     $data = [
         'personalizations' => [
             [
@@ -111,20 +100,18 @@ function sendPasswordChangeOTPSendGrid($to_email, $username, $otp, $api_key) {
         'Content-Type: application/json'
     ]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     
-    return $http_code === 202;
-}
-
-function sendPasswordChangeOTPMail($to_email, $username, $otp) {
-    $subject = "🔐 Password Change OTP - Library Noise Monitor";
-    $message = "Hello {$username}!\n\nYou requested to change your password.\n\nYour OTP verification code is: {$otp}\n\nThis code will expire in 5 minutes.\n\n---\nLibrary Noise Monitor System";
-    $headers = "From: noreply@librarymonitor.com\r\n";
-    $headers .= "Reply-To: noreply@librarymonitor.com\r\n";
-    
-    return mail($to_email, $subject, $message, $headers);
+    if ($http_code === 202) {
+        error_log("✅ Password change OTP sent via SendGrid to: " . $to_email);
+        return true;
+    } else {
+        error_log("❌ SendGrid error: HTTP $http_code - " . substr($response, 0, 500));
+        return false;
+    }
 }
 ?>
