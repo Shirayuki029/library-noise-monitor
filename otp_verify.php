@@ -1,6 +1,13 @@
 <?php
+
+// ===== DEBUG: Show all errors =====
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+// ===================================
+
 require_once 'config.php';
 require_once 'mail_config.php';
+// ... rest of your code
 
 if (isAuthenticated()) {
     $_SESSION['login_success'] = true;
