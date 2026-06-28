@@ -9,37 +9,18 @@ define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
 
 // ============================================================
-// AUTO-DETECT PHPMailer files - tries multiple paths
+// FIX: PHPMailer files are in the PHPMailer folder
 // ============================================================
-
-function loadPHPMailer() {
-    $paths = [
-        __DIR__ . '/PHPMailer/src/',           // /app/PHPMailer/src/
-        __DIR__ . '/PHPMailer/',                // /app/PHPMailer/
-        __DIR__ . '/../PHPMailer/src/',         // /app/../PHPMailer/src/
-        __DIR__ . '/../PHPMailer/',             // /app/../PHPMailer/
-        __DIR__ . '/vendor/phpmailer/phpmailer/src/', // Composer path
-        __DIR__ . '/',                          // /app/ (root)
-    ];
-    
-    foreach ($paths as $path) {
-        if (file_exists($path . 'PHPMailer.php')) {
-            require_once $path . 'Exception.php';
-            require_once $path . 'PHPMailer.php';
-            require_once $path . 'SMTP.php';
-            return true;
-        }
-    }
-    return false;
-}
 
 function sendOTPEmail($to_email, $username, $otp) {
     try {
-        // Load PHPMailer
-        if (!loadPHPMailer()) {
-            error_log("PHPMailer not found, using fallback");
-            return sendOTPEmailSimple($to_email, $username, $otp);
-        }
+        // The PHPMailer folder is in the same directory as this file
+        // So we use: __DIR__ . '/PHPMailer/src/'
+        $base_dir = __DIR__ . '/PHPMailer/src/';
+        
+        require_once $base_dir . 'Exception.php';
+        require_once $base_dir . 'PHPMailer.php';
+        require_once $base_dir . 'SMTP.php';
         
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         
@@ -128,11 +109,11 @@ Library Noise Monitor System
 
 function sendPasswordChangeOTP($to_email, $username, $otp) {
     try {
-        // Load PHPMailer
-        if (!loadPHPMailer()) {
-            error_log("PHPMailer not found, using fallback");
-            return sendPasswordChangeOTPSimple($to_email, $username, $otp);
-        }
+        $base_dir = __DIR__ . '/PHPMailer/src/';
+        
+        require_once $base_dir . 'Exception.php';
+        require_once $base_dir . 'PHPMailer.php';
+        require_once $base_dir . 'SMTP.php';
         
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         
