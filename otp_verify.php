@@ -32,7 +32,8 @@ if (isset($_GET['resend'])) {
     $user_email = $_SESSION['temp_email'] ?? '';
     $username = $_SESSION['temp_username'] ?? '';
     
-    if (sendOTPEmail($user_email, $new_otp, $username)) {
+    // FIX: Correct parameter order: (email, username, otp)
+    if (sendOTPEmail($user_email, $username, $new_otp)) {
         $success = "✅ New OTP sent to your email!";
     } else {
         $error = "❌ Failed to send OTP. Please try again.";
@@ -61,6 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         unset($_SESSION['temp_user_id']);
         unset($_SESSION['temp_username']);
+        unset($_SESSION['temp_email']);
         unset($_SESSION['temp_role']);
         unset($_SESSION['otp']);
         unset($_SESSION['otp_expiry']);
@@ -73,6 +75,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     } else {
         $error = "❌ Invalid OTP. Please try again.";
+        // Increment failed attempts
+        $_SESSION['otp_attempts'] = ($_SESSION['otp_attempts'] ?? 0) + 1;
+        if ($_SESSION['otp_attempts'] >= 3) {
+            $error = "❌ Too many failed attempts. Please request a new OTP.";
+            // Clear OTP session
+            unset($_SESSION['otp']);
+            unset($_SESSION['otp_expiry']);
+            unset($_SESSION['otp_attempts']);
+        }
     }
 }
 ?>
@@ -275,6 +286,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 600;
         }
         
+        .attempts {
+            color: #94a3b8;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        
+        .attempts span {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+        
         @media (max-width: 480px) {
             .container {
                 padding: 24px;
@@ -339,6 +361,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="timer">
             ⏱️ Code expires in <span id="timer">5:00</span>
         </div>
+        
+        <?php if (isset($_SESSION['otp_attempts']) && $_SESSION['otp_attempts'] > 0): ?>
+        <div class="attempts">
+            Attempts: <span><?php echo $_SESSION['otp_attempts']; ?></span> / 3
+        </div>
+        <?php endif; ?>
     </div>
     
     <script>
@@ -369,6 +397,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 this.form.submit();
             }
         });
+        
+        // Prevent form resubmission on page refresh
+        if (window.history.replaceState) {
+            window.history.replaceState(null, null, window.location.href);
+        }
     </script>
 </body>
 </html>
