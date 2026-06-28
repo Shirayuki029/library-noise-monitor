@@ -47,13 +47,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $_SESSION['temp_user_id'] = $user['id'];
                 $_SESSION['temp_username'] = $user['username'];
-                $_SESSION['temp_email'] = $user['email']; // ADDED: Store email in session
+                $_SESSION['temp_email'] = $user['email']; // ADDED: Store email
                 $_SESSION['temp_role'] = $user['role'];
                 $_SESSION['otp'] = $otp;
                 $_SESSION['otp_expiry'] = time() + OTP_EXPIRY;
-                $_SESSION['otp_attempts'] = 0; // Reset attempts
+                $_SESSION['otp_attempts'] = 0; // ADDED: Reset attempts counter
                 
-                // Send OTP via email
+                // ADDED: Send OTP email before redirect
                 require_once 'mail_config.php';
                 sendOTPEmail($user['email'], $user['username'], $otp);
                 
