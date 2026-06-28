@@ -307,24 +307,6 @@ if (isset($_GET['resend'])) {
             transform: scale(0.98);
         }
         
-        .btn-secondary {
-            width: 100%;
-            padding: 14px;
-            background: #334155;
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.3s ease;
-            margin-top: 10px;
-        }
-        
-        .btn-secondary:hover {
-            background: #475569;
-        }
-        
         .btn-success {
             width: 100%;
             padding: 14px;
@@ -402,10 +384,6 @@ if (isset($_GET['resend'])) {
             font-weight: 600;
         }
         
-        .hidden {
-            display: none;
-        }
-        
         @media (max-width: 480px) {
             .container {
                 padding: 24px;
@@ -435,7 +413,7 @@ if (isset($_GET['resend'])) {
         <div class="header-icon">🔐</div>
         <h2>Verify Your Identity</h2>
         <p class="subtitle">
-            We'll send a 6-digit OTP to your registered email address to verify your identity before changing your password.
+            Enter the OTP code shown below to verify your identity before changing your password.
         </p>
         
         <?php if ($success): ?>
@@ -451,14 +429,14 @@ if (isset($_GET['resend'])) {
         <div class="debug-box">
             <div class="label">📱 YOUR OTP CODE</div>
             <div class="code"><?php echo htmlspecialchars($_SESSION['password_change_otp']); ?></div>
-            <div class="hint">Enter this code to verify your identity (email sending is disabled)</div>
+            <div class="hint">Enter this code to verify your identity (email sending is disabled for testing)</div>
         </div>
         <?php endif; ?>
         
         <div class="info-box">
             <p>
-                📨 We'll send the OTP to<br>
-                <span class="email-highlight"><?php echo htmlspecialchars($email ?: 'your registered email'); ?></span>
+                👤 Verifying identity for<br>
+                <span class="email-highlight"><?php echo htmlspecialchars($username); ?></span>
             </p>
         </div>
         
@@ -499,7 +477,7 @@ if (isset($_GET['resend'])) {
         <?php else: ?>
         <!-- If no OTP, show Send OTP button -->
         <form method="POST">
-            <button type="submit" name="send_otp" class="btn-primary">📧 Send OTP</button>
+            <button type="submit" name="send_otp" class="btn-primary">📧 Generate OTP</button>
         </form>
         <?php endif; ?>
     </div>
@@ -507,7 +485,7 @@ if (isset($_GET['resend'])) {
     <script>
         <?php if (isset($_SESSION['password_change_otp'])): ?>
         // Timer countdown
-        let timeLeft = 300; // 5 minutes in seconds
+        let timeLeft = 300;
         let timerInterval;
         
         function updateTimer() {
@@ -529,7 +507,6 @@ if (isset($_GET['resend'])) {
             }
         }
         
-        // Start timer
         updateTimer();
         timerInterval = setInterval(updateTimer, 1000);
         
@@ -543,7 +520,7 @@ if (isset($_GET['resend'])) {
             });
         }
         
-        // Handle resend button - show loading state
+        // Handle resend button
         const resendBtn = document.getElementById('resendBtn');
         if (resendBtn) {
             resendBtn.addEventListener('click', function(e) {
