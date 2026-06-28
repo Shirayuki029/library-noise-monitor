@@ -78,7 +78,6 @@ if (!$otp_sent) {
             $_SESSION['otp_sent'] = true;
             $success = '📧 OTP sent to your email! Please check your inbox.';
         } else {
-            // Email failed - show OTP on page for testing
             $error = '⚠️ Could not send email. OTP displayed below for testing.';
         }
     }
@@ -156,27 +155,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .success { background: rgba(34, 197, 94, 0.2); color: #22c55e; padding: 12px; border-radius: 10px; margin-bottom: 20px; }
         .back-link { margin-top: 20px; }
         .back-link a { color: #64748b; text-decoration: none; font-size: 14px; }
-        .otp-fallback { font-size: 48px; font-weight: bold; color: #22c55e; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; margin: 15px 0; letter-spacing: 12px; border: 2px solid #22c55e; }
+        .otp-fallback { font-size: 36px; font-weight: bold; color: #22c55e; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 12px; margin: 15px 0; letter-spacing: 8px; }
         .email-notice { background: rgba(99, 102, 241, 0.15); padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(99, 102, 241, 0.3); }
         .email-notice .icon { font-size: 32px; }
-        .debug-box { background: rgba(34, 197, 94, 0.1); padding: 15px; border-radius: 10px; margin: 15px 0; border: 2px dashed #22c55e; }
-        .debug-box .label { color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; }
-        .debug-box .code { color: #22c55e; font-size: 52px; font-weight: bold; letter-spacing: 15px; font-family: monospace; }
-        .debug-box .hint { color: #64748b; font-size: 13px; margin-top: 5px; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="auth-container">
             <h2>🔐 OTP Authentication</h2>
-            
-            <!-- ===== DEBUG: Always show OTP ===== -->
-            <div class="debug-box">
-                <div class="label">📱 YOUR OTP CODE</div>
-                <div class="code"><?php echo $_SESSION['otp']; ?></div>
-                <div class="hint">Enter this code to login (email is disabled for testing)</div>
-            </div>
-            <!-- ================================= -->
             
             <?php if (!isset($error) || strpos($error, 'displayed') === false): ?>
                 <div class="email-notice">
