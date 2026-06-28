@@ -18,7 +18,7 @@ define('DB_NAME', $dbname);
 define('DB_PORT', $port);
 
 // OTP Configuration
-define('OTP_EXPIRY', 120); // 2 minutes
+define('OTP_EXPIRY', 300); // 2 minutes
 
 // ===== ADDED FOR C1: SESSION TIMEOUT =====
 define('SESSION_TIMEOUT', 1800); // 30 minutes (1800 seconds)
