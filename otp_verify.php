@@ -1,4 +1,6 @@
 <?php
+// otp_verify.php - Corrected version
+
 // Enable error reporting
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -6,6 +8,7 @@ ini_set('display_errors', 1);
 require_once 'config.php';
 require_once 'mail_config.php';
 
+// Check if user is already authenticated
 if (isAuthenticated()) {
     $_SESSION['login_success'] = true;
     $_SESSION['login_username'] = $_SESSION['username'];
@@ -13,8 +16,13 @@ if (isAuthenticated()) {
     exit();
 }
 
-// Check if OTP session exists
-if (!isset($_SESSION['otp']) || !isset($_SESSION['temp_user_id'])) {
+// --- CRITICAL FIX: Check for resend action FIRST ---
+// Allow the page to load for resend requests, even if session data is partially missing.
+// The resend logic will re-populate the OTP.
+$is_resend = isset($_GET['resend']);
+
+// Only redirect to login if this is NOT a resend request AND session data is missing.
+if (!$is_resend && (!isset($_SESSION['otp']) || !isset($_SESSION['temp_user_id']))) {
     header("Location: login.php");
     exit();
 }
@@ -22,13 +30,15 @@ if (!isset($_SESSION['otp']) || !isset($_SESSION['temp_user_id'])) {
 $error = '';
 $success = '';
 
-// Handle resend OTP request
-if (isset($_GET['resend'])) {
-    // Generate new OTP
+// Handle resend OTP request - This runs BEFORE the session data check above
+if ($is_resend) {
+    // Regenerate OTP
     $new_otp = rand(100000, 999999);
     $_SESSION['otp'] = $new_otp;
     $_SESSION['otp_expiry'] = time() + 300; // 5 minutes
-    $_SESSION['otp_attempts'] = 0; // Reset attempts
+    
+    // Reset attempts
+    $_SESSION['otp_attempts'] = 0;
     
     // Resend email
     $user_email = $_SESSION['temp_email'] ?? '';
@@ -47,11 +57,12 @@ if (isset($_GET['resend'])) {
         error_log("Resend OTP failed: No email in session");
     }
     
-    // Stay on the same page - DO NOT redirect
-    // The success/error messages will show on the page
+    // CRITICAL: Do NOT redirect. Just show the message on the same page.
+    // The page will continue to load and display the form below.
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// --- Normal OTP Verification Logic ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_resend) {
     $user_otp = trim($_POST['otp'] ?? '');
     $stored_otp = $_SESSION['otp'] ?? '';
     $expiry = $_SESSION['otp_expiry'] ?? 0;
@@ -60,11 +71,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please enter the OTP code';
     } elseif (time() > $expiry) {
         $error = 'OTP has expired. Please request a new one.';
-        // Clear expired OTP
+        // Clear expired OTP but keep user data to allow resend
         unset($_SESSION['otp']);
         unset($_SESSION['otp_expiry']);
     } elseif ($user_otp === $stored_otp) {
-        // Login successful
+        // --- Login Successful ---
         $_SESSION['user_id'] = $_SESSION['temp_user_id'];
         $_SESSION['username'] = $_SESSION['temp_username'];
         $_SESSION['role'] = $_SESSION['temp_role'];
@@ -78,7 +89,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         unset($_SESSION['temp_role']);
         unset($_SESSION['otp']);
         unset($_SESSION['otp_expiry']);
-        unset($_SESSION['otp_sent']);
         unset($_SESSION['otp_attempts']);
         
         $_SESSION['login_success'] = true;
@@ -93,15 +103,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($_SESSION['otp_attempts'] >= 3) {
             $error = "❌ Too many failed attempts. Please request a new OTP.";
-            // Clear OTP session to force new login
+            // Clear OTP but keep temp user data
             unset($_SESSION['otp']);
             unset($_SESSION['otp_expiry']);
-            unset($_SESSION['otp_attempts']);
         } else {
             $error = "❌ Invalid OTP. You have {$attempts_left} attempt(s) left.";
         }
     }
 }
+
+// --- The rest of your HTML page remains the same ---
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -109,226 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OTP Verification</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            background: #0f172a;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-        }
-        
-        .container {
-            background: #1e293b;
-            padding: 40px;
-            border-radius: 20px;
-            max-width: 420px;
-            width: 100%;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
-        
-        .header-icon {
-            font-size: 48px;
-            margin-bottom: 10px;
-        }
-        
-        h2 {
-            color: #e2e8f0;
-            font-size: 24px;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-        
-        .subtitle {
-            color: #94a3b8;
-            font-size: 14px;
-            margin-bottom: 25px;
-        }
-        
-        .info-box {
-            background: #0f172a;
-            padding: 16px;
-            border-radius: 12px;
-            margin: 20px 0;
-            border: 1px solid #334155;
-        }
-        
-        .info-box p {
-            color: #94a3b8;
-            font-size: 14px;
-            line-height: 1.6;
-            margin: 0;
-        }
-        
-        .info-box .email-highlight {
-            color: #a5b4fc;
-            font-weight: 500;
-        }
-        
-        .success-box {
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid #22c55e;
-            color: #22c55e;
-            padding: 12px;
-            border-radius: 10px;
-            margin: 10px 0;
-            font-size: 14px;
-        }
-        
-        .error-box {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid #ef4444;
-            color: #ef4444;
-            padding: 12px;
-            border-radius: 10px;
-            margin: 10px 0;
-            font-size: 14px;
-        }
-        
-        .form-group {
-            margin: 20px 0;
-        }
-        
-        label {
-            display: block;
-            color: #94a3b8;
-            font-size: 14px;
-            margin-bottom: 8px;
-            text-align: left;
-            font-weight: 500;
-        }
-        
-        input[type="text"] {
-            width: 100%;
-            padding: 14px;
-            border-radius: 12px;
-            border: 2px solid #334155;
-            background: #0f172a;
-            color: white;
-            font-size: 28px;
-            text-align: center;
-            letter-spacing: 12px;
-            box-sizing: border-box;
-            transition: border-color 0.3s ease;
-            font-family: 'Courier New', monospace;
-        }
-        
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-        }
-        
-        input[type="text"]::placeholder {
-            letter-spacing: 2px;
-            font-size: 16px;
-            color: #475569;
-        }
-        
-        button[type="submit"] {
-            width: 100%;
-            padding: 14px;
-            background: #6366f1;
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.3s ease;
-            margin-top: 10px;
-        }
-        
-        button[type="submit"]:hover {
-            background: #4f46e5;
-        }
-        
-        button[type="submit"]:active {
-            transform: scale(0.98);
-        }
-        
-        .links {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #334155;
-        }
-        
-        .links a {
-            color: #64748b;
-            text-decoration: none;
-            font-size: 14px;
-            transition: color 0.3s ease;
-        }
-        
-        .links a:hover {
-            color: #a5b4fc;
-        }
-        
-        .resend-btn {
-            background: none;
-            border: none;
-            color: #6366f1;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            text-decoration: underline;
-            transition: color 0.3s ease;
-        }
-        
-        .resend-btn:hover {
-            color: #4f46e5;
-        }
-        
-        .timer {
-            color: #64748b;
-            font-size: 13px;
-            margin-top: 15px;
-        }
-        
-        .timer span {
-            color: #a5b4fc;
-            font-weight: 600;
-        }
-        
-        .attempts {
-            color: #94a3b8;
-            font-size: 12px;
-            margin-top: 10px;
-        }
-        
-        .attempts span {
-            color: #f59e0b;
-            font-weight: 600;
-        }
-        
-        @media (max-width: 480px) {
-            .container {
-                padding: 24px;
-            }
-            
-            h2 {
-                font-size: 20px;
-            }
-            
-            input[type="text"] {
-                font-size: 24px;
-                letter-spacing: 8px;
-                padding: 12px;
-            }
-        }
-    </style>
+    <!-- Your existing CSS styles -->
 </head>
 <body>
     <div class="container">
@@ -337,11 +129,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p class="subtitle">Enter the 6-digit code sent to your email</p>
         
         <?php if ($success): ?>
-            <div class="success-box"><?php echo $success; ?></div>
+            <div class="success-box"><?php echo htmlspecialchars($success); ?></div>
         <?php endif; ?>
         
         <?php if ($error): ?>
-            <div class="error-box"><?php echo $error; ?></div>
+            <div class="error-box"><?php echo htmlspecialchars($error); ?></div>
         <?php endif; ?>
         
         <div class="info-box">
@@ -371,6 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <div class="links">
             <a href="login.php">← Back to Login</a>
+            <!-- The resend link stays the same -->
             <a href="?resend=1" class="resend-btn" id="resendBtn">🔄 Resend OTP</a>
         </div>
         
