@@ -4,22 +4,42 @@
 
 // Your Gmail credentials
 define('SMTP_EMAIL', 'albanodc2006@gmail.com');
-define('SMTP_PASSWORD', 'bewgpbdyftxeuiyn'); // No spaces!
+define('SMTP_PASSWORD', 'bewgpbdyftxeuiyn');
 define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
 
 // ============================================================
-// FIX: PHPMailer files are in /PHPMailer/src/ directory
+// AUTO-DETECT PHPMailer files - tries multiple paths
 // ============================================================
+
+function loadPHPMailer() {
+    $paths = [
+        __DIR__ . '/PHPMailer/src/',           // /app/PHPMailer/src/
+        __DIR__ . '/PHPMailer/',                // /app/PHPMailer/
+        __DIR__ . '/../PHPMailer/src/',         // /app/../PHPMailer/src/
+        __DIR__ . '/../PHPMailer/',             // /app/../PHPMailer/
+        __DIR__ . '/vendor/phpmailer/phpmailer/src/', // Composer path
+        __DIR__ . '/',                          // /app/ (root)
+    ];
+    
+    foreach ($paths as $path) {
+        if (file_exists($path . 'PHPMailer.php')) {
+            require_once $path . 'Exception.php';
+            require_once $path . 'PHPMailer.php';
+            require_once $path . 'SMTP.php';
+            return true;
+        }
+    }
+    return false;
+}
 
 function sendOTPEmail($to_email, $username, $otp) {
     try {
-        // PHPMailer files are in /PHPMailer/src/ directory
-        $base_dir = __DIR__ . '/PHPMailer/src/';
-        
-        require_once $base_dir . 'Exception.php';
-        require_once $base_dir . 'PHPMailer.php';
-        require_once $base_dir . 'SMTP.php';
+        // Load PHPMailer
+        if (!loadPHPMailer()) {
+            error_log("PHPMailer not found, using fallback");
+            return sendOTPEmailSimple($to_email, $username, $otp);
+        }
         
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         
@@ -71,7 +91,6 @@ function sendOTPEmail($to_email, $username, $otp) {
         
     } catch (Exception $e) {
         error_log("Email error: " . $e->getMessage());
-        // Fallback to simple mail
         return sendOTPEmailSimple($to_email, $username, $otp);
     }
 }
@@ -109,12 +128,11 @@ Library Noise Monitor System
 
 function sendPasswordChangeOTP($to_email, $username, $otp) {
     try {
-        // PHPMailer files are in /PHPMailer/src/ directory
-        $base_dir = __DIR__ . '/PHPMailer/src/';
-        
-        require_once $base_dir . 'Exception.php';
-        require_once $base_dir . 'PHPMailer.php';
-        require_once $base_dir . 'SMTP.php';
+        // Load PHPMailer
+        if (!loadPHPMailer()) {
+            error_log("PHPMailer not found, using fallback");
+            return sendPasswordChangeOTPSimple($to_email, $username, $otp);
+        }
         
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         
