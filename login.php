@@ -47,9 +47,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $_SESSION['temp_user_id'] = $user['id'];
                 $_SESSION['temp_username'] = $user['username'];
+                $_SESSION['temp_email'] = $user['email']; // ADDED: Store email in session
                 $_SESSION['temp_role'] = $user['role'];
                 $_SESSION['otp'] = $otp;
                 $_SESSION['otp_expiry'] = time() + OTP_EXPIRY;
+                $_SESSION['otp_attempts'] = 0; // Reset attempts
+                
+                // Send OTP via email
+                require_once 'mail_config.php';
+                sendOTPEmail($user['email'], $user['username'], $otp);
                 
                 header("Location: otp_verify.php");
                 exit();
