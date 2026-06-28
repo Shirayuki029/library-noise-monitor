@@ -7,7 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
-$host = getenv('MYSQLHOST') ?: 'reseau.proxy.rlwy.net';
+$host = getenv('MYSQLHOST') ?: 'mysql.railway.internal';
 $port = getenv('MYSQLPORT') ?: 46901;
 $dbname = getenv('MYSQLDATABASE') ?: 'noise_monitor';
 $user = getenv('MYSQLUSER') ?: 'root';
