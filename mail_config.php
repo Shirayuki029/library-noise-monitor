@@ -4,15 +4,15 @@
 
 // Your Gmail credentials
 define('SMTP_EMAIL', 'albanodc2006@gmail.com');
-define('SMTP_PASSWORD', 'bewgpbdyftxeuiyn');
+define('SMTP_PASSWORD', 'bewgpbdyftxeuiyn'); // No spaces!
 define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
 
 // Function to send OTP email using PHPMailer
 function sendOTPEmail($to_email, $username, $otp) {
     try {
-        // ===== FIX: Look in the PHPMailer subfolder =====
-        $base_dir = __DIR__ . '/PHPMailer/';
+        // ===== FIX: PHPMailer is at ROOT level =====
+        $base_dir = __DIR__ . '/../PHPMailer/src/';
         
         require_once $base_dir . 'Exception.php';
         require_once $base_dir . 'PHPMailer.php';
@@ -24,7 +24,7 @@ function sendOTPEmail($to_email, $username, $otp) {
         $mail->Host = SMTP_HOST;
         $mail->SMTPAuth = true;
         $mail->Username = SMTP_EMAIL;
-        $mail->Password = str_replace(' ', '', SMTP_PASSWORD);
+        $mail->Password = SMTP_PASSWORD;
         $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = SMTP_PORT;
         $mail->SMTPDebug = 0;
@@ -101,12 +101,13 @@ Library Noise Monitor System
 }
 
 // ============================================================
-// NEW: Password Change OTP Email
+// Password Change OTP Email
 // ============================================================
 
 function sendPasswordChangeOTP($to_email, $username, $otp) {
     try {
-        $base_dir = __DIR__ . '/PHPMailer/';
+        // ===== FIX: PHPMailer is at ROOT level =====
+        $base_dir = __DIR__ . '/../PHPMailer/src/';
         
         require_once $base_dir . 'Exception.php';
         require_once $base_dir . 'PHPMailer.php';
@@ -118,7 +119,7 @@ function sendPasswordChangeOTP($to_email, $username, $otp) {
         $mail->Host = SMTP_HOST;
         $mail->SMTPAuth = true;
         $mail->Username = SMTP_EMAIL;
-        $mail->Password = str_replace(' ', '', SMTP_PASSWORD);
+        $mail->Password = SMTP_PASSWORD;
         $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = SMTP_PORT;
         $mail->SMTPDebug = 0;
