@@ -1,198 +1,119 @@
 <?php
-// mail_config.php
-// Email configuration for sending OTP via Gmail
-
-// Your Gmail credentials
-define('SMTP_EMAIL', 'albanodc2006@gmail.com');
-define('SMTP_PASSWORD', 'bewgpbdyftxeuiyn');
-define('SMTP_HOST', 'smtp.gmail.com');
-define('SMTP_PORT', 587);
-
-// ============================================================
-// FIX: PHPMailer files are in the PHPMailer folder
-// ============================================================
+// mail_config.php - SendGrid version (works on Railway)
 
 function sendOTPEmail($to_email, $username, $otp) {
-    try {
-        // The PHPMailer folder is in the same directory as this file
-        // So we use: __DIR__ . '/PHPMailer/src/'
-        $base_dir = __DIR__ . '/PHPMailer/src/';
-        
-        require_once $base_dir . 'Exception.php';
-        require_once $base_dir . 'PHPMailer.php';
-        require_once $base_dir . 'SMTP.php';
-        
-        $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
-        
-        $mail->isSMTP();
-        $mail->Host = SMTP_HOST;
-        $mail->SMTPAuth = true;
-        $mail->Username = SMTP_EMAIL;
-        $mail->Password = SMTP_PASSWORD;
-        $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port = SMTP_PORT;
-        $mail->SMTPDebug = 0;
-        
-        $mail->setFrom(SMTP_EMAIL, 'Library Noise Monitor');
-        $mail->addAddress($to_email, $username);
-        
-        $mail->isHTML(true);
-        $mail->Subject = '🔐 Your OTP Code - Library Noise Monitor';
-        $mail->Body = "
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
-                    .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                    .header { text-align: center; color: #6366f1; font-size: 24px; }
-                    .otp { font-size: 48px; font-weight: bold; text-align: center; color: #22c55e; padding: 20px; background: #f0fdf4; border-radius: 10px; letter-spacing: 8px; margin: 20px 0; }
-                    .footer { text-align: center; color: #94a3b8; font-size: 12px; margin-top: 20px; }
-                    .warning { color: #ef4444; font-size: 14px; }
-                    .info { color: #6366f1; font-size: 14px; }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <div class='header'>📚 Library Noise Monitor</div>
-                    <h2 style='text-align: center;'>OTP Authentication</h2>
-                    <p>Hello <strong>$username</strong>,</p>
-                    <p>Enter the following OTP code to complete your login:</p>
-                    <div class='otp'>$otp</div>
-                    <p>This OTP will expire in <strong>5 minutes</strong>.</p>
-                    <p class='info'>You have <strong>3 attempts</strong> to enter the correct OTP.</p>
-                    <p class='warning'>⚠️ If you didn't request this, please ignore this email.</p>
-                    <div class='footer'>This is an automated message. Do not reply to this email.</div>
-                </div>
-            </body>
-            </html>
-        ";
-        $mail->AltBody = "Your OTP code is: $otp\n\nThis OTP will expire in 5 minutes.\nYou have 3 attempts to enter the correct OTP.\n\nLibrary Noise Monitor System";
-        
-        return $mail->send();
-        
-    } catch (Exception $e) {
-        error_log("Email error: " . $e->getMessage());
-        return sendOTPEmailSimple($to_email, $username, $otp);
+    // Check if email is valid
+    if (empty($to_email) || !filter_var($to_email, FILTER_VALIDATE_EMAIL)) {
+        error_log("Invalid email: " . $to_email);
+        return false;
+    }
+    
+    // Get SendGrid API key from environment variable
+    $api_key = getenv('SENDGRID_API_KEY');
+    
+    // If no SendGrid, try using mail()
+    if (empty($api_key)) {
+        error_log("SendGrid API key not found, using mail() fallback");
+        return sendOTPEmailMail($to_email, $username, $otp);
+    }
+    
+    $data = [
+        'personalizations' => [
+            [
+                'to' => [['email' => $to_email]],
+                'subject' => "🔐 Your OTP Code - Library Noise Monitor"
+            ]
+        ],
+        'from' => ['email' => 'albanodc2006@gmail.com', 'name' => 'Library Noise Monitor'],
+        'content' => [
+            [
+                'type' => 'text/plain',
+                'value' => "Hello {$username}!\n\nYour OTP verification code is: {$otp}\n\nThis code will expire in 5 minutes.\n\nYou have 3 attempts to enter the correct OTP.\n\nIf you didn't request this, please ignore this email.\n\n---\nLibrary Noise Monitor System"
+            ]
+        ]
+    ];
+    
+    $ch = curl_init('https://api.sendgrid.com/v3/mail/send');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $api_key,
+        'Content-Type: application/json'
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($http_code === 202) {
+        return true;
+    } else {
+        error_log("SendGrid error: HTTP $http_code - $response");
+        return false;
     }
 }
 
-// Fallback: Simple email using mail() function
-function sendOTPEmailSimple($to_email, $username, $otp) {
+// Fallback using PHP mail()
+function sendOTPEmailMail($to_email, $username, $otp) {
     $subject = "🔐 Your OTP Code - Library Noise Monitor";
-    
-    $message = "
-Library Noise Monitor - OTP Authentication
-
-Hello $username,
-
-Your OTP code is: $otp
-
-This OTP will expire in 5 minutes.
-You have 3 attempts to enter the correct OTP.
-
-If you didn't request this, please ignore this email.
-
----
-Library Noise Monitor System
-    ";
-    
-    $headers = "From: " . SMTP_EMAIL . "\r\n";
-    $headers .= "Reply-To: " . SMTP_EMAIL . "\r\n";
-    $headers .= "X-Mailer: PHP/" . phpversion();
+    $message = "Hello {$username}!\n\nYour OTP verification code is: {$otp}\n\nThis code will expire in 5 minutes.\n\n---\nLibrary Noise Monitor System";
+    $headers = "From: albanodc2006@gmail.com\r\n";
+    $headers .= "Reply-To: albanodc2006@gmail.com\r\n";
     
     return mail($to_email, $subject, $message, $headers);
 }
 
-// ============================================================
-// Password Change OTP Email
-// ============================================================
-
+// Password change OTP
 function sendPasswordChangeOTP($to_email, $username, $otp) {
-    try {
-        $base_dir = __DIR__ . '/PHPMailer/src/';
-        
-        require_once $base_dir . 'Exception.php';
-        require_once $base_dir . 'PHPMailer.php';
-        require_once $base_dir . 'SMTP.php';
-        
-        $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
-        
-        $mail->isSMTP();
-        $mail->Host = SMTP_HOST;
-        $mail->SMTPAuth = true;
-        $mail->Username = SMTP_EMAIL;
-        $mail->Password = SMTP_PASSWORD;
-        $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port = SMTP_PORT;
-        $mail->SMTPDebug = 0;
-        
-        $mail->setFrom(SMTP_EMAIL, 'Library Noise Monitor');
-        $mail->addAddress($to_email, $username);
-        
-        $mail->isHTML(true);
-        $mail->Subject = '🔐 Password Change OTP - Library Noise Monitor';
-        $mail->Body = "
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
-                    .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                    .header { text-align: center; color: #6366f1; font-size: 24px; }
-                    .otp { font-size: 48px; font-weight: bold; text-align: center; color: #22c55e; padding: 20px; background: #f0fdf4; border-radius: 10px; letter-spacing: 8px; margin: 20px 0; }
-                    .footer { text-align: center; color: #94a3b8; font-size: 12px; margin-top: 20px; }
-                    .warning { color: #ef4444; font-size: 14px; }
-                    .info { color: #6366f1; font-size: 14px; }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <div class='header'>📚 Library Noise Monitor</div>
-                    <h2 style='text-align: center;'>Password Change Request</h2>
-                    <p>Hello <strong>$username</strong>,</p>
-                    <p>You requested to change your password. Enter the following OTP code to proceed:</p>
-                    <div class='otp'>$otp</div>
-                    <p>This OTP will expire in <strong>5 minutes</strong>.</p>
-                    <p class='info'>You have <strong>3 attempts</strong> to enter the correct OTP.</p>
-                    <p class='warning'>⚠️ If you didn't request this, please ignore this email.</p>
-                    <div class='footer'>This is an automated message. Do not reply to this email.</div>
-                </div>
-            </body>
-            </html>
-        ";
-        $mail->AltBody = "Password Change OTP: $otp\n\nThis OTP will expire in 5 minutes.\nYou have 3 attempts to enter the correct OTP.\n\nLibrary Noise Monitor System";
-        
-        return $mail->send();
-        
-    } catch (Exception $e) {
-        error_log("Password change email error: " . $e->getMessage());
-        return sendPasswordChangeOTPSimple($to_email, $username, $otp);
+    if (empty($to_email) || !filter_var($to_email, FILTER_VALIDATE_EMAIL)) {
+        error_log("Invalid email: " . $to_email);
+        return false;
     }
+    
+    $api_key = getenv('SENDGRID_API_KEY');
+    
+    if (empty($api_key)) {
+        return sendPasswordChangeOTPMail($to_email, $username, $otp);
+    }
+    
+    $data = [
+        'personalizations' => [
+            [
+                'to' => [['email' => $to_email]],
+                'subject' => "🔐 Password Change OTP - Library Noise Monitor"
+            ]
+        ],
+        'from' => ['email' => 'albanodc2006@gmail.com', 'name' => 'Library Noise Monitor'],
+        'content' => [
+            [
+                'type' => 'text/plain',
+                'value' => "Hello {$username}!\n\nYou requested to change your password.\n\nYour OTP verification code is: {$otp}\n\nThis code will expire in 5 minutes.\n\nIf you didn't request this, please ignore this email.\n\n---\nLibrary Noise Monitor System"
+            ]
+        ]
+    ];
+    
+    $ch = curl_init('https://api.sendgrid.com/v3/mail/send');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $api_key,
+        'Content-Type: application/json'
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    return $http_code === 202;
 }
 
-// Fallback for password change OTP
-function sendPasswordChangeOTPSimple($to_email, $username, $otp) {
+function sendPasswordChangeOTPMail($to_email, $username, $otp) {
     $subject = "🔐 Password Change OTP - Library Noise Monitor";
-    
-    $message = "
-Library Noise Monitor - Password Change OTP
-
-Hello $username,
-
-You requested to change your password.
-Your OTP code is: $otp
-
-This OTP will expire in 5 minutes.
-You have 3 attempts to enter the correct OTP.
-
-If you didn't request this, please ignore this email.
-
----
-Library Noise Monitor System
-    ";
-    
-    $headers = "From: " . SMTP_EMAIL . "\r\n";
-    $headers .= "Reply-To: " . SMTP_EMAIL . "\r\n";
-    $headers .= "X-Mailer: PHP/" . phpversion();
+    $message = "Hello {$username}!\n\nYou requested to change your password.\n\nYour OTP verification code is: {$otp}\n\nThis code will expire in 5 minutes.\n\n---\nLibrary Noise Monitor System";
+    $headers = "From: albanodc2006@gmail.com\r\n";
+    $headers .= "Reply-To: albanodc2006@gmail.com\r\n";
     
     return mail($to_email, $subject, $message, $headers);
 }
