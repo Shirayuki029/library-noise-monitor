@@ -4,7 +4,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 require_once 'config.php';
-require_once 'mail_config.php';  // Enable email sending
+require_once 'mail_config.php';
 
 if (isAuthenticated()) {
     $_SESSION['login_success'] = true;
@@ -13,6 +13,7 @@ if (isAuthenticated()) {
     exit();
 }
 
+// Check if OTP session exists
 if (!isset($_SESSION['otp']) || !isset($_SESSION['temp_user_id'])) {
     header("Location: login.php");
     exit();
@@ -27,17 +28,27 @@ if (isset($_GET['resend'])) {
     $new_otp = rand(100000, 999999);
     $_SESSION['otp'] = $new_otp;
     $_SESSION['otp_expiry'] = time() + 300; // 5 minutes
+    $_SESSION['otp_attempts'] = 0; // Reset attempts
     
     // Resend email
     $user_email = $_SESSION['temp_email'] ?? '';
     $username = $_SESSION['temp_username'] ?? '';
     
-    // FIX: Correct parameter order: (email, username, otp)
-    if (sendOTPEmail($user_email, $username, $new_otp)) {
-        $success = "✅ New OTP sent to your email!";
+    if (!empty($user_email)) {
+        if (sendOTPEmail($user_email, $username, $new_otp)) {
+            $success = "✅ New OTP sent to your email!";
+            error_log("Resend OTP sent to: " . $user_email);
+        } else {
+            $error = "❌ Failed to send OTP. Please try again.";
+            error_log("Resend OTP failed for: " . $user_email);
+        }
     } else {
-        $error = "❌ Failed to send OTP. Please try again.";
+        $error = "❌ Email address not found. Please login again.";
+        error_log("Resend OTP failed: No email in session");
     }
+    
+    // Stay on the same page - DO NOT redirect
+    // The success/error messages will show on the page
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -60,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['authenticated'] = true;
         $_SESSION['last_activity'] = time();
         
+        // Clear temp session data
         unset($_SESSION['temp_user_id']);
         unset($_SESSION['temp_username']);
         unset($_SESSION['temp_email']);
@@ -67,6 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         unset($_SESSION['otp']);
         unset($_SESSION['otp_expiry']);
         unset($_SESSION['otp_sent']);
+        unset($_SESSION['otp_attempts']);
         
         $_SESSION['login_success'] = true;
         $_SESSION['login_username'] = $_SESSION['username'];
@@ -74,15 +87,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: dashboard.php");
         exit();
     } else {
-        $error = "❌ Invalid OTP. Please try again.";
         // Increment failed attempts
         $_SESSION['otp_attempts'] = ($_SESSION['otp_attempts'] ?? 0) + 1;
+        $attempts_left = 3 - $_SESSION['otp_attempts'];
+        
         if ($_SESSION['otp_attempts'] >= 3) {
             $error = "❌ Too many failed attempts. Please request a new OTP.";
-            // Clear OTP session
+            // Clear OTP session to force new login
             unset($_SESSION['otp']);
             unset($_SESSION['otp_expiry']);
             unset($_SESSION['otp_attempts']);
+        } else {
+            $error = "❌ Invalid OTP. You have {$attempts_left} attempt(s) left.";
         }
     }
 }
@@ -335,7 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </p>
         </div>
         
-        <form method="POST">
+        <form method="POST" id="otpForm">
             <div class="form-group">
                 <label for="otp">Enter OTP Code</label>
                 <input 
@@ -355,7 +371,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <div class="links">
             <a href="login.php">← Back to Login</a>
-            <a href="?resend=1" class="resend-btn">Resend OTP</a>
+            <a href="?resend=1" class="resend-btn" id="resendBtn">🔄 Resend OTP</a>
         </div>
         
         <div class="timer">
@@ -372,24 +388,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script>
         // Timer countdown
         let timeLeft = 300; // 5 minutes in seconds
+        let timerInterval;
         
         function updateTimer() {
             const minutes = Math.floor(timeLeft / 60);
             const seconds = timeLeft % 60;
-            document.getElementById('timer').textContent = 
-                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            const timerElement = document.getElementById('timer');
+            timerElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
             
             if (timeLeft <= 0) {
-                document.getElementById('timer').textContent = 'Expired!';
-                document.getElementById('timer').style.color = '#ef4444';
+                timerElement.textContent = 'Expired!';
+                timerElement.style.color = '#ef4444';
+                clearInterval(timerInterval);
             } else {
                 timeLeft--;
             }
         }
         
-        // Update every second
+        // Start timer
         updateTimer();
-        setInterval(updateTimer, 1000);
+        timerInterval = setInterval(updateTimer, 1000);
         
         // Auto-submit when 6 digits are entered
         document.getElementById('otp').addEventListener('input', function() {
@@ -402,6 +420,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (window.history.replaceState) {
             window.history.replaceState(null, null, window.location.href);
         }
+        
+        // Handle resend button - show loading state
+        document.getElementById('resendBtn').addEventListener('click', function(e) {
+            this.textContent = '⏳ Sending...';
+            this.style.color = '#94a3b8';
+            this.style.pointerEvents = 'none';
+            
+            // Allow the link to work
+            setTimeout(function() {
+                // The page will reload with ?resend=1
+            }, 100);
+        });
     </script>
 </body>
 </html>
