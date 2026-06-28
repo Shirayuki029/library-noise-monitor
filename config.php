@@ -1,5 +1,5 @@
 <?php
-// config.php - Database configuration for Railway
+// config.php
 
 // ===== SESSION MANAGEMENT =====
 if (session_status() === PHP_SESSION_NONE) {
@@ -7,7 +7,6 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
-// These will use Railway's environment variables automatically
 $host = getenv('MYSQLHOST') ?: 'reseau.proxy.rlwy.net';
 $port = getenv('MYSQLPORT') ?: 46901;
 $dbname = getenv('MYSQLDATABASE') ?: 'noise_monitor';
@@ -117,41 +116,8 @@ function logActivity($user_id, $action, $details = '') {
     $conn->close();
 }
 
-// ===== SESSION VALIDATION (One Login Only) =====
-function validateSession() {
-    if (!isset($_SESSION['user_id']) || !isset($_SESSION['session_id'])) {
-        return false;
-    }
-    
-    $conn = getDB();
-    if (!$conn) return false;
-    
-    $user_id = $_SESSION['user_id'];
-    $session_id = $_SESSION['session_id'];
-    
-    $stmt = $conn->prepare("SELECT session_id FROM users WHERE id = ?");
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $user = $result->fetch_assoc();
-    $stmt->close();
-    $conn->close();
-    
-    if (!$user) return false;
-    
-    return $user['session_id'] === $session_id;
-}
-
-function clearUserSession($user_id) {
-    $conn = getDB();
-    if (!$conn) return;
-    
-    $stmt = $conn->prepare("UPDATE users SET session_id = NULL WHERE id = ?");
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-    $stmt->close();
-    $conn->close();
-}
+// ===== REMOVED: validateSession() and clearUserSession() =====
+// These functions are no longer needed for "One Login Only"
 
 function debug_log($message) {
     error_log($message);
