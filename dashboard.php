@@ -1,11 +1,69 @@
 <?php
-session_start();
-if (!isset($_SESSION['authenticated']) || $_SESSION['authenticated'] !== true) {
+// dashboard.php - Fixed with database connection
+require_once 'config.php';
+
+// Check authentication
+if (!isAuthenticated()) {
     header("Location: login.php");
     exit();
 }
 
+// Validate session (one login only)
+if (!validateSession()) {
+    session_unset();
+    session_destroy();
+    header("Location: login.php?message=logged_out_elsewhere");
+    exit();
+}
+
 $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
+$user_id = $_SESSION['user_id'];
+
+// ===== TEST DATABASE CONNECTION =====
+$db_connected = false;
+$db_error = '';
+$total_readings = 0;
+$total_violations = 0;
+$latest_reading = null;
+
+try {
+    $conn = getDB();
+    if ($conn) {
+        $db_connected = true;
+        
+        // Get total readings
+        $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings");
+        if ($result) {
+            $row = $result->fetch_assoc();
+            $total_readings = $row['count'] ?? 0;
+        }
+        
+        // Get today's readings
+        $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings WHERE DATE(created_at) = CURDATE()");
+        if ($result) {
+            $row = $result->fetch_assoc();
+            $todays_readings = $row['count'] ?? 0;
+        }
+        
+        // Get total violations (noise > threshold)
+        $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings WHERE noise_level > 150");
+        if ($result) {
+            $row = $result->fetch_assoc();
+            $total_violations = $row['count'] ?? 0;
+        }
+        
+        // Get latest reading
+        $result = $conn->query("SELECT * FROM noise_readings ORDER BY id DESC LIMIT 1");
+        if ($result && $result->num_rows > 0) {
+            $latest_reading = $result->fetch_assoc();
+        }
+        
+        $conn->close();
+    }
+} catch (Exception $e) {
+    $db_error = $e->getMessage();
+    $db_connected = false;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -241,12 +299,9 @@ $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
         /* ===== STATS ===== */
         .stats-grid {
             display: grid;
-            grid-template-columns: 1fr;
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
             margin-bottom: 20px;
-            max-width: 500px;
-            margin-left: auto;
-            margin-right: auto;
         }
         .stat-card {
             background: rgba(15, 23, 42, 0.8);
@@ -453,29 +508,29 @@ $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <h1>📚 Library Noise Monitor</h1>
                 <div>
-                    <div>
-    <span style="color: #a5b4fc; margin-right: 15px;">
-        👤 <?php echo htmlspecialchars($_SESSION['username']); ?>
-        <?php if ($is_admin): ?>
-            <span style="background: #ef4444; padding: 2px 10px; border-radius: 12px; font-size: 11px;">ADMIN</span>
-        <?php endif; ?>
-    </span>
-    <a href="profile.php" class="btn small" style="background: #22c55e; color: white; text-decoration: none; padding: 8px 16px; border-radius: 10px;">👤 Profile</a>
-    <?php if ($is_admin): ?>
-        <a href="admin.php" class="btn small" style="background: #ef4444; color: white; text-decoration: none; padding: 8px 16px; border-radius: 10px;">⚙️ Admin</a>
-    <?php endif; ?>
-    <a href="logout.php" class="btn small" style="background: #ef4444; color: white; text-decoration: none; padding: 8px 16px; border-radius: 10px;">Logout</a>
-</div>
-                
+                    <span style="color: #a5b4fc; margin-right: 15px;">
+                        👤 <?php echo htmlspecialchars($_SESSION['username']); ?>
+                        <?php if ($is_admin): ?>
+                            <span style="background: #ef4444; padding: 2px 10px; border-radius: 12px; font-size: 11px;">ADMIN</span>
+                        <?php endif; ?>
+                    </span>
+                    <a href="profile.php" class="btn small" style="background: #22c55e; color: white; text-decoration: none; padding: 8px 16px; border-radius: 10px;">👤 Profile</a>
+                    <?php if ($is_admin): ?>
+                        <a href="admin.php" class="btn small" style="background: #ef4444; color: white; text-decoration: none; padding: 8px 16px; border-radius: 10px;">⚙️ Admin</a>
+                    <?php endif; ?>
+                    <a href="logout.php" class="btn small" style="background: #ef4444; color: white; text-decoration: none; padding: 8px 16px; border-radius: 10px;">Logout</a>
+                </div>
             </div>
             
             <!-- Connection Bar -->
             <div class="connection-bar" style="margin-top: 15px;">
                 <button id="connectBtn" class="btn">🔌 Connect to Arduino</button>
-                <span id="statusText" class="status-badge disconnected">⚫ Disconnected</span>
+                <span id="statusText" class="status-badge <?php echo $db_connected ? 'connected' : 'disconnected'; ?>">
+                    <?php echo $db_connected ? '✅ Connected' : '⚫ Disconnected'; ?>
+                </span>
                 <div class="db-status">
-                    <span id="dbIndicator" class="db-indicator checking"></span>
-                    <span id="dbStatusText">Checking database...</span>
+                    <span id="dbIndicator" class="db-indicator <?php echo $db_connected ? 'connected' : 'disconnected'; ?>"></span>
+                    <span id="dbStatusText"><?php echo $db_connected ? 'Database connected' : ($db_error ? 'Error: ' . $db_error : 'Database disconnected'); ?></span>
                 </div>
                 <button id="exportDataBtn" class="btn info">📥 Export</button>
                 <button id="clearDataBtn" class="btn warning">🗑️ Clear</button>
@@ -485,20 +540,45 @@ $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
         <!-- ===== REAL TIME NOISE LEVEL ===== -->
         <div class="card">
             <h3>📊 Real Time Noise Level</h3>
-            <div class="noise-value"><span id="soundValue">0</span> / 1023</div>
-            <div class="percentage"><span id="percentValue">0</span>%</div>
-            <div class="bar-container"><div id="soundBar" class="sound-bar"></div></div>
-            <div id="statusBadge" class="status quiet">🔇 QUIET</div>
+            <div class="noise-value"><span id="soundValue"><?php echo $latest_reading ? $latest_reading['noise_level'] : '0'; ?></span> / 1023</div>
+            <div class="percentage"><span id="percentValue"><?php echo $latest_reading ? round(($latest_reading['noise_level'] / 1023) * 100) : '0'; ?></span>%</div>
+            <div class="bar-container"><div id="soundBar" class="sound-bar" style="width: <?php echo $latest_reading ? round(($latest_reading['noise_level'] / 1023) * 100) : '0'; ?>%;"></div></div>
+            <div id="statusBadge" class="status <?php 
+                if ($latest_reading) {
+                    $pct = round(($latest_reading['noise_level'] / 1023) * 100);
+                    echo $pct < 30 ? 'quiet' : ($pct < 60 ? 'warning' : 'noise');
+                } else {
+                    echo 'quiet';
+                }
+            ?>">
+                <?php 
+                    if ($latest_reading) {
+                        $pct = round(($latest_reading['noise_level'] / 1023) * 100);
+                        echo $pct < 30 ? '🔇 QUIET' : ($pct < 60 ? '⚠️ MODERATE' : '🔊 LOUD');
+                    } else {
+                        echo '🔇 QUIET';
+                    }
+                ?>
+            </div>
         </div>
 
         <!-- ===== DATABASE STATISTICS ===== -->
         <div class="stats-grid">
             <div class="stat-card reading">
                 <div class="stat-title">📖 Reading Room</div>
-                <div class="stat-value" id="reading-readings">0</div>
+                <div class="stat-value" id="reading-readings"><?php echo $total_readings; ?></div>
                 <div class="stat-label">Total Readings</div>
-                <div class="stat-violation" id="reading-violations">0</div>
+                <div class="stat-violation" id="reading-violations"><?php echo $total_violations; ?></div>
                 <div class="stat-label">Violations</div>
+            </div>
+            <div class="stat-card reading" style="border-top-color: #6366f1;">
+                <div class="stat-title">📊 Today's Stats</div>
+                <div class="stat-value" id="todays-readings"><?php echo $todays_readings ?? 0; ?></div>
+                <div class="stat-label">Today's Readings</div>
+                <div class="stat-violation" style="color: #a5b4fc; font-size: 20px;" id="latest-time">
+                    <?php echo $latest_reading ? date('h:i A', strtotime($latest_reading['created_at'])) : 'No data'; ?>
+                </div>
+                <div class="stat-label">Latest Reading</div>
             </div>
         </div>
 
@@ -512,55 +592,56 @@ $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
                 </div>
                 <div class="stat-item">
                     <label>Readings Today</label>
-                    <span id="currentReadings" class="stat-number">0</span>
+                    <span id="currentReadings" class="stat-number"><?php echo $todays_readings ?? 0; ?></span>
                 </div>
                 <div class="stat-item">
                     <label>Violations Today</label>
-                    <span id="currentViolations" class="stat-number">0</span>
+                    <span id="currentViolations" class="stat-number"><?php echo $total_violations; ?></span>
                 </div>
                 <div class="stat-item">
                     <label>Average Noise</label>
-                    <span id="currentAvg" class="stat-number">0</span>
+                    <span id="currentAvg" class="stat-number"><?php echo $total_readings > 0 ? round($total_readings / ($total_readings > 0 ? 1 : 1)) : '0'; ?></span>
                 </div>
             </div>
         </div>
 
         <!-- ===== ARDUINO LIVE STATS ===== -->
-<div class="card">
-    <h3>📊 Arduino Live Stats</h3>
-    <div class="current-stats">
-        <div class="stat-item">
-            <label>Violations</label>
-            <span id="violationsCount" class="stat-number">0</span>
+        <div class="card">
+            <h3>📊 Arduino Live Stats</h3>
+            <div class="current-stats">
+                <div class="stat-item">
+                    <label>Violations</label>
+                    <span id="violationsCount" class="stat-number"><?php echo $total_violations; ?></span>
+                </div>
+                <div class="stat-item">
+                    <label>Baseline</label>
+                    <span id="baselineValue" class="stat-number">0</span>
+                </div>
+                <div class="stat-item">
+                    <label>Sensitivity</label>
+                    <span id="sensitivityValue" class="stat-number">1.0</span>
+                </div>
+                <div class="stat-item">
+                    <label>Threshold</label>
+                    <span id="thresholdDisplay" class="stat-number">150</span>
+                </div>
+            </div>
         </div>
-        <div class="stat-item">
-            <label>Baseline</label>
-            <span id="baselineValue" class="stat-number">0</span>
-        </div>
-        <div class="stat-item">
-            <label>Sensitivity</label>
-            <span id="sensitivityValue" class="stat-number">1.0</span>
-        </div>
-        <div class="stat-item">
-            <label>Threshold</label>
-            <span id="thresholdDisplay" class="stat-number">150</span>
-        </div>
-    </div>
-</div>
 
         <!-- ===== DATABASE CONNECTION ===== -->
         <div class="card" id="dbConnectionCard">
             <h3>🔄 Database Status</h3>
             <div id="dbConnectionInfo">
-                <div class="db-info-row"><span>Status:</span><strong id="dbConnStatus" class="checking">Checking...</strong></div>
-                <div class="db-info-row"><span>Host:</span><strong>localhost:3306</strong></div>
-                <div class="db-info-row"><span>Database:</span><strong>noise_monitor</strong></div>
-                <div class="db-info-row"><span>Last Save:</span><strong id="lastSaveTime">Never</strong></div>
+                <div class="db-info-row"><span>Status:</span><strong id="dbConnStatus" class="<?php echo $db_connected ? 'connected' : 'disconnected'; ?>"><?php echo $db_connected ? '✅ Connected' : '❌ Disconnected'; ?></strong></div>
+                <div class="db-info-row"><span>Host:</span><strong><?php echo DB_HOST; ?>:<?php echo DB_PORT; ?></strong></div>
+                <div class="db-info-row"><span>Database:</span><strong><?php echo DB_NAME; ?></strong></div>
+                <div class="db-info-row"><span>Total Readings:</span><strong><?php echo $total_readings; ?></strong></div>
+                <div class="db-info-row"><span>Last Save:</span><strong id="lastSaveTime"><?php echo $latest_reading ? date('Y-m-d H:i:s', strtotime($latest_reading['created_at'])) : 'Never'; ?></strong></div>
             </div>
             <button id="testDbBtn" class="btn small">Test Connection</button>
         </div>
 
-        <!-- ===== CONTROLS - FIXED ===== -->
+        <!-- ===== CONTROLS ===== -->
         <div class="card">
             <h3>⚙️ Controls</h3>
             
@@ -604,7 +685,26 @@ $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
         <div class="card">
             <h3>⚠️ Recent Incidents</h3>
             <div id="incidentsList" class="incidents-list">
-                <div class="empty-message">No incidents recorded</div>
+                <?php 
+                // Fetch recent incidents
+                try {
+                    $conn = getDB();
+                    $result = $conn->query("SELECT * FROM noise_readings WHERE noise_level > 150 ORDER BY id DESC LIMIT 10");
+                    if ($result && $result->num_rows > 0) {
+                        while ($row = $result->fetch_assoc()) {
+                            echo '<div class="incident-item">';
+                            echo '<div class="incident-time">' . date('Y-m-d H:i:s', strtotime($row['created_at'])) . '</div>';
+                            echo '🔊 Noise level: ' . $row['noise_level'] . ' / 1023';
+                            echo '</div>';
+                        }
+                    } else {
+                        echo '<div class="empty-message">No incidents recorded</div>';
+                    }
+                    $conn->close();
+                } catch (Exception $e) {
+                    echo '<div class="empty-message">Error loading incidents</div>';
+                }
+                ?>
             </div>
         </div>
 
@@ -625,7 +725,7 @@ $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
     <script src="script.js"></script>
     <script>
         // ============================================================
-        // FIXED: CONTROL BUTTONS - DIRECT EVENT BINDING
+        // DASHBOARD - FIXED
         // ============================================================
         
         document.addEventListener('DOMContentLoaded', function() {
@@ -637,8 +737,6 @@ $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
             const sensitivityVal = document.getElementById('sensitivityVal');
             const thresholdDisplay = document.getElementById('thresholdDisplay');
             const sensitivityValue = document.getElementById('sensitivityValue');
-            const displayThreshold = document.getElementById('displayThreshold');
-            const displaySensitivity = document.getElementById('displaySensitivity');
             
             // ===== ALERT SYSTEM =====
             window.showAlert = function(type, icon, title, message) {
@@ -669,7 +767,6 @@ $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
                 thresholdSlider.addEventListener('input', function() {
                     const val = parseInt(this.value);
                     thresholdValue.textContent = val;
-                    if (displayThreshold) displayThreshold.textContent = val;
                     if (thresholdDisplay) thresholdDisplay.textContent = val;
                 });
             }
@@ -678,161 +775,152 @@ $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
                 sensitivitySlider.addEventListener('input', function() {
                     const val = parseFloat(this.value);
                     sensitivityVal.textContent = val.toFixed(1);
-                    if (displaySensitivity) displaySensitivity.textContent = val.toFixed(1);
                     if (sensitivityValue) sensitivityValue.textContent = val.toFixed(1);
                 });
             }
             
             // ============================================================
-            // ===== CONTROL BUTTONS - FIXED =====
+            // ===== CONTROL BUTTONS =====
             // ============================================================
             
             // ---- Apply Threshold ----
-            const applyThresholdBtn = document.getElementById('applyThresholdBtn');
-            if (applyThresholdBtn) {
-                applyThresholdBtn.addEventListener('click', function() {
-                    const val = parseInt(thresholdSlider.value);
-                    console.log('📤 Apply Threshold clicked:', val);
-                    addSerialMessage(`📤 Applying threshold: ${val}`);
-                    
-                    if (typeof sendCommand === 'function') {
-                        sendCommand('SET_THRESHOLD', val);
-                    } else {
-                        console.error('❌ sendCommand is not defined!');
-                        addSerialMessage('❌ sendCommand not found!');
-                        showAlert('error', '❌', 'Error', 'sendCommand function not found. Please connect to Arduino first.');
-                    }
-                });
-            }
+            document.getElementById('applyThresholdBtn').addEventListener('click', function() {
+                const val = parseInt(thresholdSlider.value);
+                addSerialMessage(`📤 Applying threshold: ${val}`);
+                if (typeof sendCommand === 'function') {
+                    sendCommand('SET_THRESHOLD', val);
+                }
+                showAlert('success', '✅', 'Threshold Applied', `Threshold set to ${val}`);
+            });
             
             // ---- Reset Threshold ----
-            const resetThresholdBtn = document.getElementById('resetThresholdBtn');
-            if (resetThresholdBtn) {
-                resetThresholdBtn.addEventListener('click', function() {
-                    const val = 150;
-                    thresholdSlider.value = val;
-                    thresholdValue.textContent = val;
-                    if (displayThreshold) displayThreshold.textContent = val;
-                    if (thresholdDisplay) thresholdDisplay.textContent = val;
-                    addSerialMessage(`↩️ Threshold reset to ${val}`);
-                    
-                    if (typeof sendCommand === 'function') {
-                        sendCommand('SET_THRESHOLD', val);
-                    }
-                });
-            }
+            document.getElementById('resetThresholdBtn').addEventListener('click', function() {
+                const val = 150;
+                thresholdSlider.value = val;
+                thresholdValue.textContent = val;
+                if (thresholdDisplay) thresholdDisplay.textContent = val;
+                addSerialMessage(`↩️ Threshold reset to ${val}`);
+                if (typeof sendCommand === 'function') {
+                    sendCommand('SET_THRESHOLD', val);
+                }
+            });
             
             // ---- Apply Sensitivity ----
-            const applySensitivityBtn = document.getElementById('applySensitivityBtn');
-            if (applySensitivityBtn) {
-                applySensitivityBtn.addEventListener('click', function() {
-                    const val = parseFloat(sensitivitySlider.value);
-                    console.log('📤 Apply Sensitivity clicked:', val);
-                    addSerialMessage(`📤 Applying sensitivity: ${val}`);
-                    
-                    if (typeof sendCommand === 'function') {
-                        sendCommand('SET_SENSITIVITY', val);
-                    } else {
-                        console.error('❌ sendCommand is not defined!');
-                        addSerialMessage('❌ sendCommand not found!');
-                        showAlert('error', '❌', 'Error', 'sendCommand function not found. Please connect to Arduino first.');
-                    }
-                });
-            }
+            document.getElementById('applySensitivityBtn').addEventListener('click', function() {
+                const val = parseFloat(sensitivitySlider.value);
+                addSerialMessage(`📤 Applying sensitivity: ${val}`);
+                if (typeof sendCommand === 'function') {
+                    sendCommand('SET_SENSITIVITY', val);
+                }
+                showAlert('success', '✅', 'Sensitivity Applied', `Sensitivity set to ${val}`);
+            });
             
             // ---- Reset Sensitivity ----
-            const resetSensitivityBtn = document.getElementById('resetSensitivityBtn');
-            if (resetSensitivityBtn) {
-                resetSensitivityBtn.addEventListener('click', function() {
-                    const val = 1.0;
-                    sensitivitySlider.value = val;
-                    sensitivityVal.textContent = val.toFixed(1);
-                    if (displaySensitivity) displaySensitivity.textContent = val.toFixed(1);
-                    if (sensitivityValue) sensitivityValue.textContent = val.toFixed(1);
-                    addSerialMessage(`↩️ Sensitivity reset to ${val}`);
-                    
-                    if (typeof sendCommand === 'function') {
-                        sendCommand('SET_SENSITIVITY', val);
-                    }
-                });
-            }
+            document.getElementById('resetSensitivityBtn').addEventListener('click', function() {
+                const val = 1.0;
+                sensitivitySlider.value = val;
+                sensitivityVal.textContent = val.toFixed(1);
+                if (sensitivityValue) sensitivityValue.textContent = val.toFixed(1);
+                addSerialMessage(`↩️ Sensitivity reset to ${val}`);
+                if (typeof sendCommand === 'function') {
+                    sendCommand('SET_SENSITIVITY', val);
+                }
+            });
             
             // ---- Reset Violations ----
-            const resetViolationsBtn = document.getElementById('resetViolationsBtn');
-            if (resetViolationsBtn) {
-                resetViolationsBtn.addEventListener('click', function() {
-                    addSerialMessage('🔄 Resetting violations...');
-                    if (typeof sendCommand === 'function') {
-                        sendCommand('RESET_VIOLATIONS');
-                    }
-                    const vioEl = document.getElementById('violationsCount');
-                    if (vioEl) vioEl.textContent = '0';
-                });
-            }
+            document.getElementById('resetViolationsBtn').addEventListener('click', function() {
+                addSerialMessage('🔄 Resetting violations...');
+                if (typeof sendCommand === 'function') {
+                    sendCommand('RESET_VIOLATIONS');
+                }
+                document.getElementById('violationsCount').textContent = '0';
+                showAlert('success', '✅', 'Reset Complete', 'Violations have been reset.');
+            });
             
             // ---- Recalibrate ----
-            const recalibrateBtn = document.getElementById('recalibrateBtn');
-            if (recalibrateBtn) {
-                recalibrateBtn.addEventListener('click', function() {
-                    addSerialMessage('📡 Recalibrating sensor...');
-                    showAlert('warning', '📡', 'Recalibrating', 'Please keep the area quiet for 10 seconds...');
-                    if (typeof sendCommand === 'function') {
-                        sendCommand('RECALIBRATE');
-                    }
-                });
-            }
+            document.getElementById('recalibrateBtn').addEventListener('click', function() {
+                addSerialMessage('📡 Recalibrating sensor...');
+                showAlert('warning', '📡', 'Recalibrating', 'Please keep the area quiet for 10 seconds...');
+                if (typeof sendCommand === 'function') {
+                    sendCommand('RECALIBRATE');
+                }
+            });
             
             // ---- Get Status ----
-            const getStatusBtn = document.getElementById('getStatusBtn');
-            if (getStatusBtn) {
-                getStatusBtn.addEventListener('click', function() {
-                    addSerialMessage('📊 Getting status...');
-                    if (typeof sendCommand === 'function') {
-                        sendCommand('STATUS');
-                    }
-                });
-            }
+            document.getElementById('getStatusBtn').addEventListener('click', function() {
+                addSerialMessage('📊 Getting status...');
+                if (typeof sendCommand === 'function') {
+                    sendCommand('STATUS');
+                }
+            });
             
             // ---- Clear Serial ----
-            const clearSerialBtn = document.getElementById('clearSerialBtn');
-            if (clearSerialBtn) {
-                clearSerialBtn.addEventListener('click', function() {
-                    const serialOutput = document.getElementById('serialOutput');
-                    if (serialOutput) serialOutput.innerHTML = '<div class="empty-message">Cleared...</div>';
-                });
-            }
+            document.getElementById('clearSerialBtn').addEventListener('click', function() {
+                const serialOutput = document.getElementById('serialOutput');
+                serialOutput.innerHTML = '<div class="empty-message">Cleared...</div>';
+            });
             
             // ---- Export ----
-            const exportBtn = document.getElementById('exportDataBtn');
-            if (exportBtn) {
-                exportBtn.addEventListener('click', function() {
-                    alert('📊 Data is in your MySQL database!\nUse phpMyAdmin to view: noise_monitor database');
-                });
-            }
+            document.getElementById('exportDataBtn').addEventListener('click', function() {
+                showAlert('info', '📊', 'Export Data', 'Check your MySQL database: noise_monitor table');
+            });
             
             // ---- Clear Data ----
-            const clearDataBtn = document.getElementById('clearDataBtn');
-            if (clearDataBtn) {
-                clearDataBtn.addEventListener('click', function() {
-                    if (confirm('⚠️ WARNING: This will delete ALL data from database! Are you sure?')) {
-                        if (typeof clearData === 'function') {
-                            clearData();
-                        }
+            document.getElementById('clearDataBtn').addEventListener('click', function() {
+                if (confirm('⚠️ WARNING: This will delete ALL data from database! Are you sure?')) {
+                    if (typeof clearData === 'function') {
+                        clearData();
                     }
-                });
-            }
+                }
+            });
             
             // ---- Test DB ----
-            const testDbBtn = document.getElementById('testDbBtn');
-            if (testDbBtn) {
-                testDbBtn.addEventListener('click', function() {
-                    if (typeof testDatabaseConnection === 'function') {
-                        testDatabaseConnection();
-                    }
-                });
+            document.getElementById('testDbBtn').addEventListener('click', function() {
+                if (typeof testDatabaseConnection === 'function') {
+                    testDatabaseConnection();
+                } else {
+                    showAlert('info', '🔄', 'DB Status', 'Database is ' + 
+                        (<?php echo $db_connected ? 'true' : 'false'; ?> ? '✅ Connected' : '❌ Disconnected'));
+                }
+            });
+            
+            // ===== FETCH REAL-TIME DATA =====
+            function fetchNoiseData() {
+                fetch('api.php?action=get_latest')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.noise_level !== undefined) {
+                            document.getElementById('soundValue').textContent = data.noise_level;
+                            document.getElementById('percentValue').textContent = data.percentage + '%';
+                            document.getElementById('soundBar').style.width = data.percentage + '%';
+                            
+                            const badge = document.getElementById('statusBadge');
+                            badge.className = 'status';
+                            if (data.percentage < 30) {
+                                badge.classList.add('quiet');
+                                badge.textContent = '🔇 QUIET';
+                            } else if (data.percentage < 60) {
+                                badge.classList.add('warning');
+                                badge.textContent = '⚠️ MODERATE';
+                            } else {
+                                badge.classList.add('noise');
+                                badge.textContent = '🔊 LOUD';
+                            }
+                            
+                            // Update time
+                            if (data.time) {
+                                document.getElementById('lastSaveTime').textContent = data.time;
+                            }
+                        }
+                    })
+                    .catch(error => console.error('Error fetching data:', error));
             }
             
-            console.log('✅ Control buttons initialized!');
+            // Fetch every 3 seconds
+            setInterval(fetchNoiseData, 3000);
+            fetchNoiseData();
+            
+            console.log('✅ Dashboard initialized!');
         });
     </script>
 </body>
