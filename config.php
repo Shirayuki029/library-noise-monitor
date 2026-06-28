@@ -8,7 +8,7 @@ $host = getenv('MYSQLHOST') ?: 'reseau.proxy.rlwy.net';
 $port = getenv('MYSQLPORT') ?: 46901;
 $dbname = getenv('MYSQLDATABASE') ?: 'noise_monitor';
 $user = getenv('MYSQLUSER') ?: 'root';
-$pass = getenv('MYSQLPASSWORD') ?: 'BNCivmYpPRgXGUFtHXiaZkBQNhmVtvIY';
+$pass = getenv('MYSQLPASSWORD') ?: 'zVsqVputbGKVtSvUkDJJfnZRpcYqkBFl';
 
 // Database configuration
 define('DB_HOST', $host);
