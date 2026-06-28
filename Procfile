@@ -1,1 +1,1 @@
-web: php smart_library/login.php
+web: php -S 0.0.0.0:$PORT -t smart_library
