@@ -8,8 +8,8 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
 // Use INTERNAL connection (app is ON Railway)
-$host = 'mysql.railway.internal';  // Internal host
-$port = 46787;                       // Internal port
+$host = 'mysql.railway.internal';
+$port = 3306;                      // Internal port
 $dbname = 'noise_monitor';                // Database name
 $user = 'root';                     // Username
 $pass = 'RVIbaHswZzBJrQVhBQGWNwXsOfeoRrnU'; // NEW PASSWORD
