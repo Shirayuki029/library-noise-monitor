@@ -122,150 +122,62 @@ async function testDatabaseConnection() {
     }
 }
 
-async function loadStats() {
-    try {
-        const response = await fetch(`${API_URL}?action=get_stats&area=${currentMode}`);
-        const stats = await response.json();
-        
-        if (stats && !stats.error) {
-            if (elements.currentReadings) elements.currentReadings.textContent = stats.total || 0;
-            if (elements.currentViolations) elements.currentViolations.textContent = stats.violations || 0;
-            if (elements.currentAvg) elements.currentAvg.textContent = Math.round(stats.avg_sound || 0);
-        }
-    } catch (error) {
-        console.log('Error loading stats:', error);
-    }
-}
-
-async function loadAllStats() {
-    try {
-        const response = await fetch(`${API_URL}?action=get_all_stats`);
-        const stats = await response.json();
-        
-        if (stats && !stats.error) {
-            if (elements.readingReadings) {
-                elements.readingReadings.textContent = stats.reading?.total_readings || 0;
+// ============================================================
+// FETCH LATEST DATA - FIXED
+// ============================================================
+function fetchNoiseData() {
+    fetch(`${API_URL}?action=get_latest`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
             }
-            if (elements.readingViolations) {
-                elements.readingViolations.textContent = stats.reading?.total_violations || 0;
+            return response.json();
+        })
+        .then(data => {
+            console.log('📊 Latest data:', data);
+            
+            if (data.noise_level !== undefined) {
+                // Update sound value
+                const soundEl = document.getElementById('soundValue');
+                if (soundEl) soundEl.textContent = data.noise_level;
+                
+                // Update percentage
+                const percentEl = document.getElementById('percentValue');
+                if (percentEl) percentEl.textContent = data.percentage + '%';
+                
+                // Update sound bar
+                const barEl = document.getElementById('soundBar');
+                if (barEl) barEl.style.width = data.percentage + '%';
+                
+                // Update status badge
+                const badgeEl = document.getElementById('statusBadge');
+                if (badgeEl) {
+                    if (data.percentage < 30) {
+                        badgeEl.textContent = '🔇 QUIET';
+                        badgeEl.className = 'status quiet';
+                    } else if (data.percentage < 60) {
+                        badgeEl.textContent = '⚠️ MODERATE';
+                        badgeEl.className = 'status warning';
+                    } else {
+                        badgeEl.textContent = '🔊 LOUD';
+                        badgeEl.className = 'status noise';
+                    }
+                }
+                
+                // Update last save time
+                if (data.time) {
+                    const timeEl = document.getElementById('lastSaveTime');
+                    if (timeEl) timeEl.textContent = data.time;
+                }
             }
-            if (elements.currentReadings) {
-                elements.currentReadings.textContent = stats.reading?.total_readings || 0;
-            }
-            if (elements.currentViolations) {
-                elements.currentViolations.textContent = stats.reading?.total_violations || 0;
-            }
-        }
-        console.log('Loaded stats:', stats);
-    } catch (error) {
-        console.log('Error loading all stats:', error);
-    }
-}
-
-async function loadIncidents() {
-    try {
-        const response = await fetch(`${API_URL}?action=get_incidents`);
-        const incidents = await response.json();
-        const container = document.getElementById('incidentsList');
-        
-        if (!container) return;
-        
-        if (!incidents || incidents.length === 0 || incidents.error) {
-            container.innerHTML = '<div class="empty-message">No incidents recorded</div>';
-            return;
-        }
-        
-        container.innerHTML = '';
-        incidents.slice(0, 20).forEach(inc => {
-            const div = document.createElement('div');
-            div.className = 'incident-item';
-            const date = new Date(inc.timestamp);
-            div.innerHTML = `
-                <div class="incident-time">⚠️ ${date.toLocaleString()}</div>
-                <div>🔊 Sound: ${inc.sound_value}/1023 (${inc.percent_value}%)</div>
-                <div>📍 ${inc.area === 'reading' ? '📖 Reading Room' : '🤫 Silent Study'}</div>
-            `;
-            container.appendChild(div);
+        })
+        .catch(error => {
+            console.error('Error fetching data:', error);
         });
-    } catch (error) {
-        console.log('Error loading incidents:', error);
-    }
 }
 
 // ============================================================
-// SAVE FUNCTIONS
-// ============================================================
-
-async function saveReading(sound, percent, status) {
-    try {
-        const data = {
-            area: currentMode,
-            sound: parseInt(sound),
-            percent: parseInt(percent),
-            status: status,
-            threshold: parseInt(elements.thresholdSlider?.value || modes[currentMode].threshold),
-            sensitivity: parseFloat(elements.sensitivitySlider?.value || modes[currentMode].sensitivity)
-        };
-        
-        console.log('💾 SAVING READING:', data);
-        
-        const response = await fetch(`${API_URL}?action=save_reading`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        
-        const result = await response.json();
-        console.log('💾 Save result:', result);
-        
-        if (result.success) {
-            if (elements.lastSaveTime) {
-                const now = new Date();
-                elements.lastSaveTime.textContent = now.toLocaleTimeString();
-            }
-            loadStats();
-            loadAllStats();
-        }
-    } catch (error) {
-        console.error('❌ Save error:', error);
-    }
-}
-
-async function saveIncident(sound, percent) {
-    try {
-        const data = {
-            area: currentMode,
-            sound: parseInt(sound),
-            percent: parseInt(percent)
-        };
-        
-        console.log('🚨 SAVING INCIDENT:', data);
-        
-        const response = await fetch(`${API_URL}?action=save_incident`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        
-        const result = await response.json();
-        console.log('🚨 Incident result:', result);
-        
-        if (result.success) {
-            addSerialMessage('✅ Incident saved to database');
-            loadIncidents();
-            loadStats();
-            loadAllStats();
-        } else {
-            addSerialMessage('❌ Incident save failed: ' + (result.error || 'Unknown error'));
-        }
-    } catch (error) {
-        console.error('❌ Incident error:', error);
-        addSerialMessage('❌ Incident save error: ' + error.message);
-    }
-}
-
-// ============================================================
-// ARDUINO CONNECTION - FIXED
+// ARDUINO CONNECTION
 // ============================================================
 
 async function connectSerial() {
@@ -559,6 +471,71 @@ function processLine(line) {
 }
 
 // ============================================================
+// SAVE FUNCTIONS
+// ============================================================
+
+async function saveReading(sound, percent, status) {
+    try {
+        const data = {
+            noise_level: parseInt(sound),
+            percent: parseInt(percent),
+            status: status,
+            user_id: 1
+        };
+        
+        console.log('💾 SAVING READING:', data);
+        
+        const response = await fetch(`${API_URL}?action=save_reading`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        console.log('💾 Save result:', result);
+        
+        if (result.success) {
+            if (elements.lastSaveTime) {
+                const now = new Date();
+                elements.lastSaveTime.textContent = now.toLocaleTimeString();
+            }
+        }
+    } catch (error) {
+        console.error('❌ Save error:', error);
+    }
+}
+
+async function saveIncident(sound, percent) {
+    try {
+        const data = {
+            area: currentMode,
+            sound: parseInt(sound),
+            percent: parseInt(percent)
+        };
+        
+        console.log('🚨 SAVING INCIDENT:', data);
+        
+        const response = await fetch(`${API_URL}?action=save_incident`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        console.log('🚨 Incident result:', result);
+        
+        if (result.success) {
+            addSerialMessage('✅ Incident saved to database');
+        } else {
+            addSerialMessage('❌ Incident save failed: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('❌ Incident error:', error);
+        addSerialMessage('❌ Incident save error: ' + error.message);
+    }
+}
+
+// ============================================================
 // UPDATE UI
 // ============================================================
 
@@ -667,9 +644,10 @@ document.addEventListener('DOMContentLoaded', function() {
     isSerialSupported();
     
     testDatabaseConnection();
-    loadStats();
-    loadAllStats();
-    loadIncidents();
+    
+    // Start fetching data every 3 seconds
+    fetchNoiseData();
+    setInterval(fetchNoiseData, 3000);
     
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeAlert();
@@ -781,7 +759,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     document.getElementById('exportDataBtn')?.addEventListener('click', function() {
-        showAlert('info', '📊', 'Data Export', 'Data is in your MySQL database!\nUse phpMyAdmin to view: noise_monitor database');
+        showAlert('info', '📊', 'Data Export', 'Data is in your MySQL database!');
     });
     
     document.getElementById('clearDataBtn')?.addEventListener('click', async function() {
@@ -794,9 +772,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (result.success) {
                     showAlert('success', '✅', 'Data Cleared', 'All data has been cleared from the database!');
                     addSerialMessage('✅ Database cleared');
-                    loadStats();
-                    loadAllStats();
-                    loadIncidents();
                 } else {
                     showAlert('error', '❌', 'Clear Failed', result.error || 'Unknown error');
                 }
@@ -819,5 +794,6 @@ window.connectSerial = connectSerial;
 window.showAlert = showAlert;
 window.closeAlert = closeAlert;
 window.isSerialSupported = isSerialSupported;
+window.fetchNoiseData = fetchNoiseData;
 
 console.log('✅ Dashboard loaded successfully!');
