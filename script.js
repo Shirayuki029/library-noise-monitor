@@ -123,7 +123,7 @@ async function testDatabaseConnection() {
 }
 
 // ============================================================
-// FETCH LATEST DATA - FIXED
+// FETCH LATEST DATA
 // ============================================================
 function fetchNoiseData() {
     fetch(`${API_URL}?action=get_latest`)
@@ -137,19 +137,15 @@ function fetchNoiseData() {
             console.log('📊 Latest data:', data);
             
             if (data.noise_level !== undefined) {
-                // Update sound value
                 const soundEl = document.getElementById('soundValue');
                 if (soundEl) soundEl.textContent = data.noise_level;
                 
-                // Update percentage
                 const percentEl = document.getElementById('percentValue');
                 if (percentEl) percentEl.textContent = data.percentage + '%';
                 
-                // Update sound bar
                 const barEl = document.getElementById('soundBar');
                 if (barEl) barEl.style.width = data.percentage + '%';
                 
-                // Update status badge
                 const badgeEl = document.getElementById('statusBadge');
                 if (badgeEl) {
                     if (data.percentage < 30) {
@@ -164,7 +160,6 @@ function fetchNoiseData() {
                     }
                 }
                 
-                // Update last save time
                 if (data.time) {
                     const timeEl = document.getElementById('lastSaveTime');
                     if (timeEl) timeEl.textContent = data.time;
@@ -177,7 +172,7 @@ function fetchNoiseData() {
 }
 
 // ============================================================
-// ARDUINO CONNECTION
+// ARDUINO CONNECTION - MANUAL CONTROL
 // ============================================================
 
 async function connectSerial() {
@@ -193,7 +188,6 @@ async function connectSerial() {
         addSerialMessage('🔌 Requesting serial port...');
         addSerialMessage('📌 Please select the COM port your Arduino is connected to.');
         
-        // Request a serial port - this triggers the browser popup
         port = await navigator.serial.requestPort();
         
         addSerialMessage('📡 Opening connection at 9600 baud...');
@@ -201,7 +195,7 @@ async function connectSerial() {
         
         isConnected = true;
         
-        // Update UI
+        // Update UI - ONLY changes when user clicks button
         if (elements.statusText) {
             elements.statusText.className = 'status-badge connected';
             elements.statusText.innerHTML = '🟢 Connected';
@@ -218,13 +212,11 @@ async function connectSerial() {
         
         await delay(1000);
         
-        // Send initial config
         const config = modes[currentMode];
         await sendCommand('SET_THRESHOLD', config.threshold);
         await delay(200);
         await sendCommand('SET_SENSITIVITY', config.sensitivity);
         
-        // Start reading
         readSerialData();
     } catch (err) {
         if (err.message.includes('cancelled') || err.message.includes('cancel')) {
@@ -235,7 +227,7 @@ async function connectSerial() {
         }
         isConnected = false;
         
-        // Reset UI
+        // Reset UI - ONLY changes when user clicks button
         if (elements.statusText) {
             elements.statusText.className = 'status-badge disconnected';
             elements.statusText.innerHTML = '⚫ Disconnected';
@@ -328,7 +320,6 @@ async function readSerialData() {
         addSerialMessage(`❌ Read error: ${err.message}`);
     }
     
-    // Cleanup on disconnect
     isConnected = false;
     if (elements.statusText) {
         elements.statusText.className = 'status-badge disconnected';
@@ -351,7 +342,6 @@ function processLine(line) {
     
     console.log('📥 RAW LINE:', line);
     
-    // Command responses
     if (line.includes('"command"')) {
         try {
             let jsonStr = line;
@@ -402,7 +392,6 @@ function processLine(line) {
         return;
     }
     
-    // Incidents
     if (line.startsWith('INCIDENT:')) {
         let data = line.substring(9).trim();
         let parts = data.split(',');
@@ -416,7 +405,6 @@ function processLine(line) {
         return;
     }
     
-    // Data lines
     if (line.startsWith('DATA:')) {
         let data = line.substring(5).trim();
         console.log('📥 DATA:', data);
@@ -640,12 +628,9 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Dashboard loaded!');
     addSerialMessage('🎯 System Ready! Click "Connect to Arduino" to start');
     
-    // Check Web Serial API support
     isSerialSupported();
-    
     testDatabaseConnection();
     
-    // Start fetching data every 3 seconds
     fetchNoiseData();
     setInterval(fetchNoiseData, 3000);
     
@@ -657,7 +642,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.target === this) closeAlert();
     });
     
-    // ===== CONNECT BUTTON - FIXED =====
+    // ===== CONNECT BUTTON =====
     const connectBtn = document.getElementById('connectBtn');
     if (connectBtn) {
         connectBtn.addEventListener('click', function(e) {
