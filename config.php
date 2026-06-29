@@ -12,7 +12,7 @@ $host = 'mysql-c0oj.railway.internal';  // ← Your specific host
 $port = 3306;
 $dbname = 'noise_monitor';
 $user = 'root';
-$pass = 'RVIbaHswZzBJrQVhBQGWnWxSOfeoRrnU'; // ← Your password
+$pass = 'RVIbahSwZzBJrQVhBQGWNwXsOfeoRrnU'; // ← Your password
 
 // Database configuration
 define('DB_HOST', $host);
