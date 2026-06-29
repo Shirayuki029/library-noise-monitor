@@ -762,7 +762,12 @@ error_log("db_error: " . $db_error);
     <!-- ===== JAVASCRIPT ===== -->
     <script>
         // ============================================================
-        // ADDED: addSerialMessage FUNCTION
+        // API URL for Railway
+        // ============================================================
+        const API_URL = '/api.php';
+
+        // ============================================================
+        // SERIAL MONITOR
         // ============================================================
         function addSerialMessage(message) {
             const serialOutput = document.getElementById('serialOutput');
@@ -774,56 +779,521 @@ error_log("db_error: " . $db_error);
             
             // Add new message
             const div = document.createElement('div');
-            div.textContent = message;
-            serialOutput.appendChild(div);
+            const timestamp = new Date().toLocaleTimeString();
+            div.textContent = `[${timestamp}] ${message}`;
             
-            // Auto scroll to bottom
+            // Color coding
+            if (message.includes('❌') || message.includes('ERROR')) {
+                div.style.color = '#ef4444';
+            } else if (message.includes('✅')) {
+                div.style.color = '#22c55e';
+            } else if (message.includes('⚠️')) {
+                div.style.color = '#eab308';
+            } else if (message.includes('📤') || message.includes('📥') || message.includes('📡')) {
+                div.style.color = '#38bdf8';
+            } else {
+                div.style.color = '#94a3b8';
+            }
+            
+            serialOutput.appendChild(div);
             serialOutput.scrollTop = serialOutput.scrollHeight;
         }
 
         // ============================================================
-        // DASHBOARD - MAIN
+        // ARDUINO CONNECTION FUNCTIONS
         // ============================================================
-        
-        document.addEventListener('DOMContentLoaded', function() {
+
+        // Global variables for serial connection
+        let port = null;
+        let isConnected = false;
+        let reader = null;
+
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // ============================================================
+        // CONNECT TO ARDUINO - MAIN FUNCTION
+        // ============================================================
+        async function connectSerial() {
+            addSerialMessage('🔌 Connect button clicked!');
+            addSerialMessage('📌 Checking Web Serial API support...');
             
-            // ===== DOM REFERENCES =====
+            // Check if Web Serial is supported
+            if (!('serial' in navigator)) {
+                addSerialMessage('❌ Web Serial API is NOT supported in this browser.');
+                addSerialMessage('📌 Please use Chrome or Edge with HTTPS.');
+                showAlert('error', '❌', 'Not Supported', 'Web Serial API is not supported. Please use Chrome or Edge.');
+                return;
+            }
+            
+            addSerialMessage('✅ Web Serial API is supported!');
+            
+            try {
+                addSerialMessage('🔌 Requesting serial port...');
+                addSerialMessage('📌 Please select the COM port your Arduino is connected to.');
+                
+                // Request a serial port - this triggers the browser popup
+                port = await navigator.serial.requestPort();
+                
+                addSerialMessage('📡 Opening connection at 9600 baud...');
+                await port.open({ baudRate: 9600 });
+                
+                isConnected = true;
+                
+                // Update UI
+                const statusText = document.getElementById('statusText');
+                const connectBtn = document.getElementById('connectBtn');
+                
+                if (statusText) {
+                    statusText.className = 'status-badge connected';
+                    statusText.innerHTML = '🟢 Connected';
+                }
+                if (connectBtn) {
+                    connectBtn.textContent = '✅ Connected';
+                    connectBtn.disabled = true;
+                    connectBtn.style.background = '#22c55e';
+                }
+                
+                addSerialMessage('✅ Connected to Arduino!');
+                addSerialMessage('📊 Waiting for data...');
+                showAlert('success', '✅', 'Connected', 'Arduino connected successfully!');
+                
+                await delay(1000);
+                
+                // Send initial config
+                await sendCommand('SET_THRESHOLD', 150);
+                await delay(200);
+                await sendCommand('SET_SENSITIVITY', 1.0);
+                
+                // Start reading
+                readSerialData();
+            } catch (err) {
+                if (err.message && (err.message.includes('cancelled') || err.message.includes('cancel'))) {
+                    addSerialMessage('⏹️ Connection cancelled by user.');
+                } else {
+                    addSerialMessage(`❌ Error: ${err.message}`);
+                    showAlert('error', '❌', 'Connection Error', err.message);
+                }
+                isConnected = false;
+                
+                // Reset UI
+                const statusText = document.getElementById('statusText');
+                const connectBtn = document.getElementById('connectBtn');
+                
+                if (statusText) {
+                    statusText.className = 'status-badge disconnected';
+                    statusText.innerHTML = '⚫ Disconnected';
+                }
+                if (connectBtn) {
+                    connectBtn.textContent = '🔌 Connect to Arduino';
+                    connectBtn.disabled = false;
+                    connectBtn.style.background = '';
+                }
+            }
+        }
+
+        // ============================================================
+        // SEND COMMAND TO ARDUINO
+        // ============================================================
+        async function sendCommand(command, value) {
+            if (!port || !isConnected) {
+                addSerialMessage(`⚠️ Not connected. Command: ${command} ${value || ''}`);
+                return false;
+            }
+            
+            try {
+                const writer = port.writable.getWriter();
+                
+                let msg;
+                if (value !== undefined) {
+                    msg = `CMD:{"command":"${command}","value":${value}}\n`;
+                } else {
+                    msg = `CMD:{"command":"${command}"}\n`;
+                }
+                
+                console.log('📤 SENDING:', msg);
+                addSerialMessage(`📤 Sending: ${command} ${value !== undefined ? '= ' + value : ''}`);
+                
+                const encoder = new TextEncoder();
+                await writer.write(encoder.encode(msg));
+                writer.releaseLock();
+                
+                addSerialMessage(`✅ Command sent successfully`);
+                return true;
+            } catch (err) {
+                console.error('❌ Send error:', err);
+                addSerialMessage(`❌ Send error: ${err.message}`);
+                return false;
+            }
+        }
+
+        // ============================================================
+        // READ SERIAL DATA
+        // ============================================================
+        async function readSerialData() {
+            try {
+                const reader = port.readable.getReader();
+                let buffer = "";
+                
+                addSerialMessage('📡 Reading serial data...');
+                
+                while (isConnected) {
+                    try {
+                        const { value, done } = await reader.read();
+                        if (done) {
+                            addSerialMessage('⚠️ Stream ended');
+                            break;
+                        }
+                        
+                        const text = new TextDecoder().decode(value);
+                        buffer += text;
+                        
+                        let lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+                        
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (trimmed) {
+                                console.log('📥 Received:', trimmed);
+                                addSerialMessage(`📥 ${trimmed}`);
+                                processLine(trimmed);
+                            }
+                        }
+                    } catch (err) {
+                        if (err.name === 'TypeError') {
+                            break;
+                        }
+                        console.error('Read error:', err);
+                    }
+                }
+            } catch (err) {
+                addSerialMessage(`❌ Read error: ${err.message}`);
+            }
+            
+            // Cleanup on disconnect
+            isConnected = false;
+            const statusText = document.getElementById('statusText');
+            const connectBtn = document.getElementById('connectBtn');
+            
+            if (statusText) {
+                statusText.className = 'status-badge disconnected';
+                statusText.innerHTML = '⚫ Disconnected';
+            }
+            if (connectBtn) {
+                connectBtn.textContent = '🔌 Connect to Arduino';
+                connectBtn.disabled = false;
+                connectBtn.style.background = '';
+            }
+            addSerialMessage('⚠️ Disconnected from Arduino');
+        }
+
+        // ============================================================
+        // PROCESS INCOMING DATA
+        // ============================================================
+        function processLine(line) {
+            if (!line) return;
+            
+            console.log('📥 RAW LINE:', line);
+            
+            // Command responses
+            if (line.includes('"command"')) {
+                try {
+                    let jsonStr = line;
+                    if (line.startsWith('CMD:')) {
+                        jsonStr = line.substring(4).trim();
+                    }
+                    if (jsonStr.startsWith('{') && jsonStr.includes('}')) {
+                        const jsonData = JSON.parse(jsonStr);
+                        console.log('📊 Command response:', jsonData);
+                        
+                        if (jsonData.command === 'SET_THRESHOLD' && jsonData.value !== undefined) {
+                            const thresholdDisplay = document.getElementById('thresholdDisplay');
+                            const displayThreshold = document.getElementById('displayThreshold');
+                            if (thresholdDisplay) thresholdDisplay.textContent = jsonData.value;
+                            if (displayThreshold) displayThreshold.textContent = jsonData.value;
+                            addSerialMessage(`✅ Threshold set to ${jsonData.value}`);
+                            showAlert('success', '✅', 'Threshold Updated', `Threshold set to ${jsonData.value}`);
+                        }
+                        if (jsonData.command === 'SET_SENSITIVITY' && jsonData.value !== undefined) {
+                            const sensitivityValue = document.getElementById('sensitivityValue');
+                            const displaySensitivity = document.getElementById('displaySensitivity');
+                            if (sensitivityValue) sensitivityValue.textContent = parseFloat(jsonData.value).toFixed(2);
+                            if (displaySensitivity) displaySensitivity.textContent = parseFloat(jsonData.value).toFixed(1);
+                            addSerialMessage(`✅ Sensitivity set to ${jsonData.value}`);
+                            showAlert('success', '✅', 'Sensitivity Updated', `Sensitivity set to ${jsonData.value}`);
+                        }
+                        if (jsonData.command === 'RESET_VIOLATIONS') {
+                            const violationsCount = document.getElementById('violationsCount');
+                            const currentViolations = document.getElementById('currentViolations');
+                            if (violationsCount) {
+                                violationsCount.textContent = '0';
+                                violationsCount.style.color = '#a5b4fc';
+                            }
+                            if (currentViolations) currentViolations.textContent = '0';
+                            addSerialMessage('✅ Violations reset to 0');
+                            showAlert('success', '🔄', 'Violations Reset', 'Violation counter reset to 0');
+                        }
+                        if (jsonData.command === 'STATUS') {
+                            addSerialMessage(`📊 Status: Threshold=${jsonData.threshold}, Sensitivity=${jsonData.sensitivity}, Violations=${jsonData.violations}`);
+                            const thresholdDisplay = document.getElementById('thresholdDisplay');
+                            const sensitivityValue = document.getElementById('sensitivityValue');
+                            const violationsCount = document.getElementById('violationsCount');
+                            const baselineValue = document.getElementById('baselineValue');
+                            if (thresholdDisplay) thresholdDisplay.textContent = jsonData.threshold;
+                            if (sensitivityValue) sensitivityValue.textContent = jsonData.sensitivity;
+                            if (violationsCount) {
+                                violationsCount.textContent = jsonData.violations;
+                                violationsCount.style.color = jsonData.violations > 0 ? '#ef4444' : '#a5b4fc';
+                            }
+                            if (baselineValue) baselineValue.textContent = jsonData.baseline;
+                        }
+                        if (jsonData.command === 'RECALIBRATE') {
+                            addSerialMessage('✅ Recalibration complete!');
+                            showAlert('success', '✅', 'Recalibrated', 'Sensor recalibration complete!');
+                        }
+                    }
+                } catch (e) {
+                    console.warn('JSON parse error:', e.message);
+                }
+                return;
+            }
+            
+            // Data lines
+            if (line.startsWith('DATA:')) {
+                let data = line.substring(5).trim();
+                console.log('📥 DATA:', data);
+                
+                let parts = data.split(',').filter(p => p.length > 0);
+                console.log('📊 Parts:', parts);
+                
+                if (parts.length >= 7) {
+                    const sound = parseInt(parts[0]) || 0;
+                    const percent = parseInt(parts[1]) || 0;
+                    const status = parts[2].toUpperCase() || 'QUIET';
+                    const threshold = parseInt(parts[3]) || 150;
+                    const violations = parseInt(parts[4]) || 0;
+                    const baseline = parseInt(parts[5]) || 50;
+                    const sensitivity = parseFloat(parts[6]) || 1.0;
+                    
+                    console.log(`📊 SOUND: ${sound}, PERCENT: ${percent}%, STATUS: ${status}, VIOLATIONS: ${violations}`);
+                    
+                    updateUI(sound, percent, status, violations);
+                    
+                    // Save to database
+                    saveReading(sound, percent, status);
+                    
+                    if (status === 'NOISE' || status === 'NOISE!') {
+                        addSerialMessage('🚨 NOISE DETECTED!');
+                    }
+                    return;
+                }
+                
+                if (parts.length >= 3) {
+                    const sound = parseInt(parts[0]) || 0;
+                    const percent = parseInt(parts[1]) || 0;
+                    const status = parts[2].toUpperCase() || 'QUIET';
+                    
+                    console.log(`📊 Simple parse: SOUND: ${sound}, PERCENT: ${percent}%, STATUS: ${status}`);
+                    updateUI(sound, percent, status, 0);
+                    saveReading(sound, percent, status);
+                    return;
+                }
+            }
+            
+            if (line.length > 0 && line !== 'READY' && !line.includes('Noise Monitor Started')) {
+                console.log('⚠️ Unknown line:', line);
+            }
+        }
+
+        // ============================================================
+        // UPDATE UI
+        // ============================================================
+        function updateUI(sound, percent, status, violations) {
+            console.log('🔄 UPDATING UI:', { sound, percent, status, violations });
+            
+            const soundValue = document.getElementById('soundValue');
+            const percentValue = document.getElementById('percentValue');
+            const soundBar = document.getElementById('soundBar');
+            const statusBadge = document.getElementById('statusBadge');
+            const violationsCount = document.getElementById('violationsCount');
+            
+            if (soundValue) {
+                soundValue.textContent = sound;
+                soundValue.style.color = percent > 70 ? '#ef4444' : percent > 40 ? '#eab308' : '#22c55e';
+            }
+            
+            if (percentValue) {
+                percentValue.textContent = percent;
+                percentValue.style.color = percent > 70 ? '#ef4444' : percent > 40 ? '#eab308' : '#a5b4fc';
+            }
+            
+            if (soundBar) {
+                const width = Math.min(percent, 100);
+                soundBar.style.width = width + '%';
+                soundBar.style.background = width > 70 ? 'linear-gradient(90deg, #ef4444, #dc2626)' : 
+                                          width > 40 ? 'linear-gradient(90deg, #eab308, #f59e0b)' : 
+                                          'linear-gradient(90deg, #22c55e, #16a34a)';
+            }
+            
+            if (statusBadge) {
+                if (status === 'NOISE' || status === 'NOISE!') {
+                    statusBadge.textContent = '🔊 NOISE DETECTED!';
+                    statusBadge.className = 'status noise';
+                } else if (status === 'WARNING') {
+                    statusBadge.textContent = '⚠️ WARNING';
+                    statusBadge.className = 'status warning';
+                } else {
+                    statusBadge.textContent = '🔇 QUIET';
+                    statusBadge.className = 'status quiet';
+                }
+            }
+            
+            if (violationsCount) {
+                violationsCount.textContent = violations;
+                violationsCount.style.color = violations > 0 ? '#ef4444' : '#a5b4fc';
+            }
+        }
+
+        // ============================================================
+        // SAVE READING TO DATABASE
+        // ============================================================
+        async function saveReading(sound, percent, status) {
+            try {
+                const data = {
+                    sound: parseInt(sound),
+                    percent: parseInt(percent),
+                    status: status,
+                    threshold: 150,
+                    sensitivity: 1.0,
+                    area: 'reading'
+                };
+                
+                console.log('💾 SAVING READING:', data);
+                
+                const response = await fetch('/api.php?action=save_reading', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                console.log('💾 Save result:', result);
+                
+                if (result.success) {
+                    const lastSaveTime = document.getElementById('lastSaveTime');
+                    if (lastSaveTime) {
+                        const now = new Date();
+                        lastSaveTime.textContent = now.toLocaleTimeString();
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Save error:', error);
+            }
+        }
+
+        // ============================================================
+        // ALERT SYSTEM
+        // ============================================================
+        window.showAlert = function(type, icon, title, message) {
+            const overlay = document.getElementById('alertOverlay');
+            const box = document.getElementById('alertBox');
+            if (!overlay || !box) return;
+            
+            document.getElementById('alertIcon').textContent = icon;
+            document.getElementById('alertTitle').textContent = title;
+            document.getElementById('alertMessage').textContent = message;
+            box.className = 'alert-box';
+            box.classList.add(type);
+            overlay.classList.add('show');
+            setTimeout(window.closeAlert, 3000);
+        };
+        
+        window.closeAlert = function() {
+            const overlay = document.getElementById('alertOverlay');
+            if (overlay) overlay.classList.remove('show');
+        };
+
+        // ============================================================
+        // FETCH REAL-TIME DATA FROM DATABASE
+        // ============================================================
+        function fetchNoiseData() {
+            fetch('/api.php?action=get_latest')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.noise_level !== undefined) {
+                        const soundValue = document.getElementById('soundValue');
+                        const percentValue = document.getElementById('percentValue');
+                        const soundBar = document.getElementById('soundBar');
+                        const statusBadge = document.getElementById('statusBadge');
+                        const lastSaveTime = document.getElementById('lastSaveTime');
+                        
+                        if (soundValue) soundValue.textContent = data.noise_level;
+                        if (percentValue) percentValue.textContent = data.percentage + '%';
+                        if (soundBar) soundBar.style.width = data.percentage + '%';
+                        
+                        if (statusBadge) {
+                            statusBadge.className = 'status';
+                            if (data.percentage < 30) {
+                                statusBadge.classList.add('quiet');
+                                statusBadge.textContent = '🔇 QUIET';
+                            } else if (data.percentage < 60) {
+                                statusBadge.classList.add('warning');
+                                statusBadge.textContent = '⚠️ MODERATE';
+                            } else {
+                                statusBadge.classList.add('noise');
+                                statusBadge.textContent = '🔊 LOUD';
+                            }
+                        }
+                        
+                        if (data.time && lastSaveTime) {
+                            lastSaveTime.textContent = data.time;
+                        }
+                    }
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        // ============================================================
+        // DOM CONTENT LOADED
+        // ============================================================
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Dashboard loaded!');
+            addSerialMessage('🎯 System Ready! Click "Connect to Arduino" to start');
+            
+            // Check Web Serial API support
+            if ('serial' in navigator) {
+                addSerialMessage('✅ Web Serial API is supported!');
+                console.log('✅ Web Serial API is supported!');
+            } else {
+                addSerialMessage('❌ Web Serial API is NOT supported in this browser.');
+                addSerialMessage('📌 Please use Chrome or Edge with HTTPS.');
+            }
+            
+            // ===== CONNECT BUTTON - FIXED =====
+            const connectBtn = document.getElementById('connectBtn');
+            if (connectBtn) {
+                console.log('✅ Connect button found!');
+                connectBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('🔌 Connect button clicked!');
+                    connectSerial();
+                });
+            } else {
+                console.error('❌ Connect button NOT found!');
+            }
+            
+            // ===== OTHER EVENT LISTENERS =====
             const thresholdSlider = document.getElementById('thresholdSlider');
             const thresholdValue = document.getElementById('thresholdValue');
             const sensitivitySlider = document.getElementById('sensitivitySlider');
             const sensitivityVal = document.getElementById('sensitivityVal');
-            const thresholdDisplay = document.getElementById('thresholdDisplay');
-            const sensitivityValue = document.getElementById('sensitivityValue');
             
-            // ===== ALERT SYSTEM =====
-            window.showAlert = function(type, icon, title, message) {
-                const overlay = document.getElementById('alertOverlay');
-                const box = document.getElementById('alertBox');
-                document.getElementById('alertIcon').textContent = icon;
-                document.getElementById('alertTitle').textContent = title;
-                document.getElementById('alertMessage').textContent = message;
-                box.className = 'alert-box';
-                box.classList.add(type);
-                overlay.classList.add('show');
-                setTimeout(window.closeAlert, 5000);
-            };
-            
-            window.closeAlert = function() {
-                document.getElementById('alertOverlay').classList.remove('show');
-            };
-            
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') window.closeAlert();
-            });
-            document.getElementById('alertOverlay').addEventListener('click', function(e) {
-                if (e.target === this) window.closeAlert();
-            });
-            
-            // ===== SLIDER DISPLAY UPDATES =====
             if (thresholdSlider) {
                 thresholdSlider.addEventListener('input', function() {
                     const val = parseInt(this.value);
-                    thresholdValue.textContent = val;
+                    if (thresholdValue) thresholdValue.textContent = val;
+                    const thresholdDisplay = document.getElementById('thresholdDisplay');
                     if (thresholdDisplay) thresholdDisplay.textContent = val;
                 });
             }
@@ -831,18 +1301,15 @@ error_log("db_error: " . $db_error);
             if (sensitivitySlider) {
                 sensitivitySlider.addEventListener('input', function() {
                     const val = parseFloat(this.value);
-                    sensitivityVal.textContent = val.toFixed(1);
+                    if (sensitivityVal) sensitivityVal.textContent = val.toFixed(1);
+                    const sensitivityValue = document.getElementById('sensitivityValue');
                     if (sensitivityValue) sensitivityValue.textContent = val.toFixed(1);
                 });
             }
             
-            // ============================================================
-            // ===== CONTROL BUTTONS =====
-            // ============================================================
-            
             // ---- Apply Threshold ----
-            document.getElementById('applyThresholdBtn').addEventListener('click', function() {
-                const val = parseInt(thresholdSlider.value);
+            document.getElementById('applyThresholdBtn')?.addEventListener('click', function() {
+                const val = parseInt(thresholdSlider?.value || 150);
                 addSerialMessage(`📤 Applying threshold: ${val}`);
                 if (typeof sendCommand === 'function') {
                     sendCommand('SET_THRESHOLD', val);
@@ -851,10 +1318,11 @@ error_log("db_error: " . $db_error);
             });
             
             // ---- Reset Threshold ----
-            document.getElementById('resetThresholdBtn').addEventListener('click', function() {
+            document.getElementById('resetThresholdBtn')?.addEventListener('click', function() {
                 const val = 150;
-                thresholdSlider.value = val;
-                thresholdValue.textContent = val;
+                if (thresholdSlider) thresholdSlider.value = val;
+                if (thresholdValue) thresholdValue.textContent = val;
+                const thresholdDisplay = document.getElementById('thresholdDisplay');
                 if (thresholdDisplay) thresholdDisplay.textContent = val;
                 addSerialMessage(`↩️ Threshold reset to ${val}`);
                 if (typeof sendCommand === 'function') {
@@ -863,8 +1331,8 @@ error_log("db_error: " . $db_error);
             });
             
             // ---- Apply Sensitivity ----
-            document.getElementById('applySensitivityBtn').addEventListener('click', function() {
-                const val = parseFloat(sensitivitySlider.value);
+            document.getElementById('applySensitivityBtn')?.addEventListener('click', function() {
+                const val = parseFloat(sensitivitySlider?.value || 1.0);
                 addSerialMessage(`📤 Applying sensitivity: ${val}`);
                 if (typeof sendCommand === 'function') {
                     sendCommand('SET_SENSITIVITY', val);
@@ -873,10 +1341,11 @@ error_log("db_error: " . $db_error);
             });
             
             // ---- Reset Sensitivity ----
-            document.getElementById('resetSensitivityBtn').addEventListener('click', function() {
+            document.getElementById('resetSensitivityBtn')?.addEventListener('click', function() {
                 const val = 1.0;
-                sensitivitySlider.value = val;
-                sensitivityVal.textContent = val.toFixed(1);
+                if (sensitivitySlider) sensitivitySlider.value = val;
+                if (sensitivityVal) sensitivityVal.textContent = val.toFixed(1);
+                const sensitivityValue = document.getElementById('sensitivityValue');
                 if (sensitivityValue) sensitivityValue.textContent = val.toFixed(1);
                 addSerialMessage(`↩️ Sensitivity reset to ${val}`);
                 if (typeof sendCommand === 'function') {
@@ -885,26 +1354,30 @@ error_log("db_error: " . $db_error);
             });
             
             // ---- Reset Violations ----
-            document.getElementById('resetViolationsBtn').addEventListener('click', function() {
+            document.getElementById('resetViolationsBtn')?.addEventListener('click', function() {
                 addSerialMessage('🔄 Resetting violations...');
                 if (typeof sendCommand === 'function') {
                     sendCommand('RESET_VIOLATIONS');
                 }
-                document.getElementById('violationsCount').textContent = '0';
+                const violationsCount = document.getElementById('violationsCount');
+                if (violationsCount) {
+                    violationsCount.textContent = '0';
+                    violationsCount.style.color = '#a5b4fc';
+                }
                 showAlert('success', '✅', 'Reset Complete', 'Violations have been reset.');
             });
             
             // ---- Recalibrate ----
-            document.getElementById('recalibrateBtn').addEventListener('click', function() {
+            document.getElementById('recalibrateBtn')?.addEventListener('click', function() {
                 addSerialMessage('📡 Recalibrating sensor...');
-                showAlert('warning', '📡', 'Recalibrating', 'Please keep the area quiet for 10 seconds...');
                 if (typeof sendCommand === 'function') {
                     sendCommand('RECALIBRATE');
                 }
+                showAlert('warning', '📡', 'Recalibrating', 'Please keep the area quiet for 10 seconds...');
             });
             
             // ---- Get Status ----
-            document.getElementById('getStatusBtn').addEventListener('click', function() {
+            document.getElementById('getStatusBtn')?.addEventListener('click', function() {
                 addSerialMessage('📊 Getting status...');
                 if (typeof sendCommand === 'function') {
                     sendCommand('STATUS');
@@ -912,73 +1385,69 @@ error_log("db_error: " . $db_error);
             });
             
             // ---- Clear Serial ----
-            document.getElementById('clearSerialBtn').addEventListener('click', function() {
+            document.getElementById('clearSerialBtn')?.addEventListener('click', function() {
                 const serialOutput = document.getElementById('serialOutput');
-                serialOutput.innerHTML = '<div class="empty-message">Cleared...</div>';
+                if (serialOutput) {
+                    serialOutput.innerHTML = '<div class="empty-message">Cleared...</div>';
+                }
             });
             
             // ---- Export ----
-            document.getElementById('exportDataBtn').addEventListener('click', function() {
+            document.getElementById('exportDataBtn')?.addEventListener('click', function() {
                 showAlert('info', '📊', 'Export Data', 'Check your MySQL database: noise_monitor table');
             });
             
             // ---- Clear Data ----
-            document.getElementById('clearDataBtn').addEventListener('click', function() {
+            document.getElementById('clearDataBtn')?.addEventListener('click', function() {
                 if (confirm('⚠️ WARNING: This will delete ALL data from database! Are you sure?')) {
-                    if (typeof clearData === 'function') {
-                        clearData();
-                    }
+                    fetch('/api.php?action=clear_data', { method: 'DELETE' })
+                        .then(response => response.json())
+                        .then(result => {
+                            if (result.success) {
+                                showAlert('success', '✅', 'Data Cleared', 'All data has been cleared!');
+                                addSerialMessage('✅ Database cleared');
+                            } else {
+                                showAlert('error', '❌', 'Clear Failed', result.error || 'Unknown error');
+                            }
+                        })
+                        .catch(error => {
+                            showAlert('error', '❌', 'Clear Failed', 'Make sure database is connected.');
+                        });
                 }
             });
             
             // ---- Test DB ----
-            document.getElementById('testDbBtn').addEventListener('click', function() {
-                if (typeof testDatabaseConnection === 'function') {
-                    testDatabaseConnection();
-                } else {
-                    showAlert('info', '🔄', 'DB Status', 'Database is ' + 
-                        (<?php echo $db_connected ? 'true' : 'false'; ?> ? '✅ Connected' : '❌ Disconnected'));
-                }
+            document.getElementById('testDbBtn')?.addEventListener('click', function() {
+                fetch('/api.php?action=test')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            showAlert('success', '✅', 'Database Connected', 'Connection is working!');
+                            addSerialMessage('✅ Database connection test passed!');
+                        } else {
+                            showAlert('error', '❌', 'Database Error', data.message || 'Connection failed');
+                        }
+                    })
+                    .catch(error => {
+                        showAlert('error', '❌', 'Database Error', 'Could not connect to database.');
+                    });
             });
             
             // ===== FETCH REAL-TIME DATA =====
-            function fetchNoiseData() {
-                fetch('api.php?action=get_latest')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.noise_level !== undefined) {
-                            document.getElementById('soundValue').textContent = data.noise_level;
-                            document.getElementById('percentValue').textContent = data.percentage + '%';
-                            document.getElementById('soundBar').style.width = data.percentage + '%';
-                            
-                            const badge = document.getElementById('statusBadge');
-                            badge.className = 'status';
-                            if (data.percentage < 30) {
-                                badge.classList.add('quiet');
-                                badge.textContent = '🔇 QUIET';
-                            } else if (data.percentage < 60) {
-                                badge.classList.add('warning');
-                                badge.textContent = '⚠️ MODERATE';
-                            } else {
-                                badge.classList.add('noise');
-                                badge.textContent = '🔊 LOUD';
-                            }
-                            
-                            // Update time
-                            if (data.time) {
-                                document.getElementById('lastSaveTime').textContent = data.time;
-                            }
-                        }
-                    })
-                    .catch(error => console.error('Error fetching data:', error));
-            }
-            
-            // Fetch every 3 seconds
             setInterval(fetchNoiseData, 3000);
             fetchNoiseData();
             
             console.log('✅ Dashboard initialized!');
         });
+
+        // ============================================================
+        // EXPOSE FUNCTIONS GLOBALLY
+        // ============================================================
+        window.connectSerial = connectSerial;
+        window.sendCommand = sendCommand;
+        window.addSerialMessage = addSerialMessage;
+        window.showAlert = showAlert;
+        window.closeAlert = closeAlert;
     </script>
 </body>
 </html>
