@@ -1,5 +1,5 @@
 <?php
-// config.php - Fixed for Railway Internal Connection
+// config.php
 
 // ===== SESSION MANAGEMENT =====
 if (session_status() === PHP_SESSION_NONE) {
@@ -7,14 +7,10 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
-// Use the INTERNAL host and port. These are for your app running ON Railway.
-$host = 'mysql.railway.internal';  // Internal host
-$port = 3306;                      // Internal port
-$dbname = 'noise_monitor';         // Your database name
-$user = 'root';                    // Your database user
-
-// !!! IMPORTANT: Copy the EXACT password from your Railway Variables tab !!!
-// DO NOT type it manually. Copy and paste it directly.
+$host = 'mysql.railway.internal';
+$port = 3306;
+$dbname = 'noise_monitor';
+$user = 'root';
 $pass = 'zVsqVputbGKVtSvUkDJJfnZRpcYqkBFl';
 
 define('DB_HOST', $host);
@@ -22,6 +18,12 @@ define('DB_USER', $user);
 define('DB_PASS', $pass);
 define('DB_NAME', $dbname);
 define('DB_PORT', $port);
+
+// ===== OTP CONFIGURATION =====
+define('OTP_EXPIRY', 300); // 5 minutes
+
+// ===== SESSION TIMEOUT =====
+define('SESSION_TIMEOUT', 1800); // 30 minutes
 
 // ===== DATABASE CONNECTION =====
 function getDB() {
@@ -31,16 +33,6 @@ function getDB() {
         return null;
     }
     return $conn;
-}
-
-// ===== CHECK DATABASE CONNECTION =====
-function checkDBConnection() {
-    $conn = getDB();
-    if ($conn) {
-        $conn->close();
-        return true;
-    }
-    return false;
 }
 
 // ===== AUTHENTICATION FUNCTIONS =====
@@ -75,6 +67,7 @@ function generateOTP() {
 function getUser($id) {
     $conn = getDB();
     if (!$conn) return null;
+    
     $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
@@ -88,6 +81,7 @@ function getUser($id) {
 function getAllUsers() {
     $conn = getDB();
     if (!$conn) return [];
+    
     $result = $conn->query("SELECT * FROM users ORDER BY created_at DESC");
     $users = [];
     while ($row = $result->fetch_assoc()) {
@@ -100,6 +94,7 @@ function getAllUsers() {
 function logActivity($user_id, $action, $details = '') {
     $conn = getDB();
     if (!$conn) return;
+    
     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $stmt = $conn->prepare("INSERT INTO user_activity (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)");
     $stmt->bind_param("isss", $user_id, $action, $details, $ip);
