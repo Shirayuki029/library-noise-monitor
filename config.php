@@ -7,11 +7,11 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
-$host = getenv('MYSQLHOST') ?: 'mysql.railway.internal';
-$port = getenv('MYSQLPORT') ?: 3306;
+$host = getenv('MYSQLHOST') ?: 'reseau.proxy.rlwy.net';
+$port = getenv('MYSQLPORT') ?: 46901;
 $dbname = getenv('MYSQLDATABASE') ?: 'noise_monitor';
 $user = getenv('MYSQLUSER') ?: 'root';
-$pass = getenv('MYSQLPASSWORD') ?: 'zVsqVputbGKVtSvUkDDJJfnZRpcYqkBF1';
+$pass = getenv('MYSQLPASSWORD') ?: 'zVsqVputbGKVtSvUkDJJfnZRpcYqkBFl';
 
 // Database configuration
 define('DB_HOST', $host);
