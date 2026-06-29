@@ -1,5 +1,5 @@
 <?php
-// config.php
+// config.php - Fixed for Railway Internal Connection
 
 // ===== SESSION MANAGEMENT =====
 if (session_status() === PHP_SESSION_NONE) {
@@ -7,34 +7,29 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
-$host = getenv('MYSQLHOST') ?: 'reseau.proxy.rlwy.net';
-$port = getenv('MYSQLPORT') ?: 46901;
-$dbname = getenv('MYSQLDATABASE') ?: 'noise_monitor';
-$user = getenv('MYSQLUSER') ?: 'root';
-$pass = getenv('MYSQLPASSWORD') ?: 'zVsqVputbGKVtSvUkDJJfnZRpcYqkBFl';
+// Use the INTERNAL host and port. These are for your app running ON Railway.
+$host = 'mysql.railway.internal';  // Internal host
+$port = 3306;                      // Internal port
+$dbname = 'noise_monitor';         // Your database name
+$user = 'root';                    // Your database user
 
-// Database configuration
+// !!! IMPORTANT: Copy the EXACT password from your Railway Variables tab !!!
+// DO NOT type it manually. Copy and paste it directly.
+$pass = 'PASTE_YOUR_EXACT_MYSQLPASSWORD_HERE';
+
 define('DB_HOST', $host);
 define('DB_USER', $user);
 define('DB_PASS', $pass);
 define('DB_NAME', $dbname);
-define('DB_PORT', (int)$port);
-
-// OTP Configuration
-define('OTP_EXPIRY', 300); // 5 minutes
-
-// ===== SESSION TIMEOUT =====
-define('SESSION_TIMEOUT', 1800); // 30 minutes
+define('DB_PORT', $port);
 
 // ===== DATABASE CONNECTION =====
 function getDB() {
     $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
-    
     if ($conn->connect_error) {
         error_log("Database connection failed: " . $conn->connect_error);
         return null;
     }
-    
     return $conn;
 }
 
@@ -80,7 +75,6 @@ function generateOTP() {
 function getUser($id) {
     $conn = getDB();
     if (!$conn) return null;
-    
     $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
@@ -94,7 +88,6 @@ function getUser($id) {
 function getAllUsers() {
     $conn = getDB();
     if (!$conn) return [];
-    
     $result = $conn->query("SELECT * FROM users ORDER BY created_at DESC");
     $users = [];
     while ($row = $result->fetch_assoc()) {
@@ -107,7 +100,6 @@ function getAllUsers() {
 function logActivity($user_id, $action, $details = '') {
     $conn = getDB();
     if (!$conn) return;
-    
     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $stmt = $conn->prepare("INSERT INTO user_activity (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)");
     $stmt->bind_param("isss", $user_id, $action, $details, $ip);
@@ -115,9 +107,6 @@ function logActivity($user_id, $action, $details = '') {
     $stmt->close();
     $conn->close();
 }
-
-// ===== REMOVED: validateSession() and clearUserSession() =====
-// These functions are no longer needed for "One Login Only"
 
 function debug_log($message) {
     error_log($message);
