@@ -2,13 +2,21 @@
 // dashboard.php - Fixed with database connection
 require_once 'config.php';
 
+// ===== DEBUG DATABASE CONNECTION =====
+error_log("=== DASHBOARD DEBUG ===");
+$test_conn = getDB();
+if ($test_conn) {
+    error_log("✅ Database connection successful!");
+    $test_conn->close();
+} else {
+    error_log("❌ Database connection FAILED!");
+}
+
 // Check authentication - SIMPLE VERSION (no validateSession)
 if (!isAuthenticated()) {
     header("Location: login.php");
     exit();
 }
-
-// REMOVED: validateSession() check - no longer needed
 
 $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 $user_id = $_SESSION['user_id'];
@@ -18,46 +26,68 @@ $db_connected = false;
 $db_error = '';
 $total_readings = 0;
 $total_violations = 0;
+$todays_readings = 0;
 $latest_reading = null;
 
+// Try to connect with detailed error reporting
 try {
     $conn = getDB();
+    
     if ($conn) {
-        $db_connected = true;
-        
-        // Get total readings
-        $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings");
-        if ($result) {
-            $row = $result->fetch_assoc();
-            $total_readings = $row['count'] ?? 0;
+        // Check if connection is alive
+        if ($conn->ping()) {
+            $db_connected = true;
+            error_log("✅ Database ping successful!");
+            
+            // Get total readings
+            $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings");
+            if ($result) {
+                $row = $result->fetch_assoc();
+                $total_readings = $row['count'] ?? 0;
+            } else {
+                error_log("⚠️ Query failed: " . $conn->error);
+            }
+            
+            // Get today's readings
+            $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings WHERE DATE(created_at) = CURDATE()");
+            if ($result) {
+                $row = $result->fetch_assoc();
+                $todays_readings = $row['count'] ?? 0;
+            }
+            
+            // Get total violations (noise > threshold)
+            $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings WHERE noise_level > 150");
+            if ($result) {
+                $row = $result->fetch_assoc();
+                $total_violations = $row['count'] ?? 0;
+            }
+            
+            // Get latest reading
+            $result = $conn->query("SELECT * FROM noise_readings ORDER BY id DESC LIMIT 1");
+            if ($result && $result->num_rows > 0) {
+                $latest_reading = $result->fetch_assoc();
+            }
+            
+            $conn->close();
+        } else {
+            $db_error = "Connection ping failed";
+            error_log("❌ Database ping failed!");
         }
-        
-        // Get today's readings
-        $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings WHERE DATE(created_at) = CURDATE()");
-        if ($result) {
-            $row = $result->fetch_assoc();
-            $todays_readings = $row['count'] ?? 0;
-        }
-        
-        // Get total violations (noise > threshold)
-        $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings WHERE noise_level > 150");
-        if ($result) {
-            $row = $result->fetch_assoc();
-            $total_violations = $row['count'] ?? 0;
-        }
-        
-        // Get latest reading
-        $result = $conn->query("SELECT * FROM noise_readings ORDER BY id DESC LIMIT 1");
-        if ($result && $result->num_rows > 0) {
-            $latest_reading = $result->fetch_assoc();
-        }
-        
-        $conn->close();
+    } else {
+        $db_error = "getDB() returned null";
+        error_log("❌ getDB() returned null!");
     }
 } catch (Exception $e) {
     $db_error = $e->getMessage();
     $db_connected = false;
+    error_log("❌ Database exception: " . $e->getMessage());
 }
+
+// Log the final status
+error_log("=== DB STATUS ===");
+error_log("db_connected: " . ($db_connected ? 'true' : 'false'));
+error_log("total_readings: " . $total_readings);
+error_log("db_error: " . $db_error);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -520,11 +550,21 @@ try {
             <div class="connection-bar" style="margin-top: 15px;">
                 <button id="connectBtn" class="btn">🔌 Connect to Arduino</button>
                 <span id="statusText" class="status-badge <?php echo $db_connected ? 'connected' : 'disconnected'; ?>">
-                    <?php echo $db_connected ? '✅ Connected' : '⚫ Disconnected'; ?>
+                    <?php echo $db_connected ? '✅ Connected' : ($db_error ? '⚠️ Error' : '⚫ Disconnected'); ?>
                 </span>
                 <div class="db-status">
                     <span id="dbIndicator" class="db-indicator <?php echo $db_connected ? 'connected' : 'disconnected'; ?>"></span>
-                    <span id="dbStatusText"><?php echo $db_connected ? 'Database connected' : ($db_error ? 'Error: ' . $db_error : 'Database disconnected'); ?></span>
+                    <span id="dbStatusText">
+                        <?php 
+                        if ($db_connected) {
+                            echo 'Database connected';
+                        } elseif ($db_error) {
+                            echo 'Error: ' . $db_error;
+                        } else {
+                            echo 'Database disconnected';
+                        }
+                        ?>
+                    </span>
                 </div>
                 <button id="exportDataBtn" class="btn info">📥 Export</button>
                 <button id="clearDataBtn" class="btn warning">🗑️ Clear</button>
@@ -683,20 +723,24 @@ try {
                 // Fetch recent incidents
                 try {
                     $conn = getDB();
-                    $result = $conn->query("SELECT * FROM noise_readings WHERE noise_level > 150 ORDER BY id DESC LIMIT 10");
-                    if ($result && $result->num_rows > 0) {
-                        while ($row = $result->fetch_assoc()) {
-                            echo '<div class="incident-item">';
-                            echo '<div class="incident-time">' . date('Y-m-d H:i:s', strtotime($row['created_at'])) . '</div>';
-                            echo '🔊 Noise level: ' . $row['noise_level'] . ' / 1023';
-                            echo '</div>';
+                    if ($conn) {
+                        $result = $conn->query("SELECT * FROM noise_readings WHERE noise_level > 150 ORDER BY id DESC LIMIT 10");
+                        if ($result && $result->num_rows > 0) {
+                            while ($row = $result->fetch_assoc()) {
+                                echo '<div class="incident-item">';
+                                echo '<div class="incident-time">' . date('Y-m-d H:i:s', strtotime($row['created_at'])) . '</div>';
+                                echo '🔊 Noise level: ' . $row['noise_level'] . ' / 1023';
+                                echo '</div>';
+                            }
+                        } else {
+                            echo '<div class="empty-message">No incidents recorded</div>';
                         }
+                        $conn->close();
                     } else {
-                        echo '<div class="empty-message">No incidents recorded</div>';
+                        echo '<div class="empty-message">Cannot connect to database</div>';
                     }
-                    $conn->close();
                 } catch (Exception $e) {
-                    echo '<div class="empty-message">Error loading incidents</div>';
+                    echo '<div class="empty-message">Error loading incidents: ' . htmlspecialchars($e->getMessage()) . '</div>';
                 }
                 ?>
             </div>
@@ -716,10 +760,29 @@ try {
     </div>
 
     <!-- ===== JAVASCRIPT ===== -->
-    <script src="script.js"></script>
     <script>
         // ============================================================
-        // DASHBOARD - FIXED
+        // ADDED: addSerialMessage FUNCTION
+        // ============================================================
+        function addSerialMessage(message) {
+            const serialOutput = document.getElementById('serialOutput');
+            if (!serialOutput) return;
+            
+            // Remove empty message if exists
+            const emptyMsg = serialOutput.querySelector('.empty-message');
+            if (emptyMsg) emptyMsg.remove();
+            
+            // Add new message
+            const div = document.createElement('div');
+            div.textContent = message;
+            serialOutput.appendChild(div);
+            
+            // Auto scroll to bottom
+            serialOutput.scrollTop = serialOutput.scrollHeight;
+        }
+
+        // ============================================================
+        // DASHBOARD - MAIN
         // ============================================================
         
         document.addEventListener('DOMContentLoaded', function() {
