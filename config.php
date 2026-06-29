@@ -10,7 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 // Use INTERNAL connection (app is ON Railway)
 $host = 'mysql.railway.internal';  // Internal host
 $port = 46787;                       // Internal port
-$dbname = 'railway';                // Database name
+$dbname = 'noise_monitor';                // Database name
 $user = 'root';                     // Username
 $pass = 'RVIbaHswZzBJrQVhBQGWNwXsOfeoRrnU'; // NEW PASSWORD
 
