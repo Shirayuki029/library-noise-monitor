@@ -7,7 +7,7 @@ header("Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json");
 
-// Turn off error display - we want JSON responses
+// Turn off error display for clean JSON
 ini_set('display_errors', 0);
 error_reporting(0);
 
@@ -100,15 +100,15 @@ if ($action === 'get_latest') {
         }
         $conn->close();
     } else {
-        echo json_encode(['error' => 'Database connection failed']);
+        echo json_encode(['noise_level' => 0, 'percentage' => 0, 'status' => 'ERROR', 'time' => null]);
     }
     exit();
 }
 
 // ============================================================
-// SAVE READING
+// SAVE READING - FIXED
 // ============================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'save_reading') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_reading') {
     $raw_input = file_get_contents('php://input');
     $data = json_decode($raw_input, true);
     
@@ -120,7 +120,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'save_reading') {
         parse_str($raw_input, $data);
     }
     
-    // Try to get noise_level from various formats
+    // Log what we received
+    error_log("SAVE READING - Raw: " . $raw_input);
+    error_log("SAVE READING - Data: " . print_r($data, true));
+    
+    // Extract noise level from various formats
     $noise_level = 0;
     if (isset($data['noise_level'])) {
         $noise_level = intval($data['noise_level']);
@@ -140,24 +144,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'save_reading') {
         }
     }
     
+    error_log("SAVE READING - Final noise_level: $noise_level");
+    
     if ($noise_level > 0 && $noise_level <= 1023) {
         $conn = getDB();
         if ($conn) {
             $stmt = $conn->prepare("INSERT INTO noise_readings (user_id, noise_level, created_at) VALUES (?, ?, NOW())");
-            $user_id = isset($data['user_id']) ? intval($data['user_id']) : 1;
+            $user_id = 1;
             $stmt->bind_param("ii", $user_id, $noise_level);
             
             if ($stmt->execute()) {
+                error_log("SAVE READING - ✅ Data saved: $noise_level");
                 echo json_encode(["success" => true, "noise_level" => $noise_level]);
             } else {
+                error_log("SAVE READING - ❌ Failed to save: " . $stmt->error);
                 echo json_encode(["success" => false, "error" => $stmt->error]);
             }
             $stmt->close();
             $conn->close();
         } else {
+            error_log("SAVE READING - ❌ Database connection failed");
             echo json_encode(["success" => false, "error" => "Database connection failed"]);
         }
     } else {
+        error_log("SAVE READING - ⚠️ Invalid noise level: $noise_level");
         echo json_encode(["success" => false, "error" => "Invalid noise level: $noise_level"]);
     }
     exit();
@@ -219,6 +229,21 @@ if ($action === 'get_incidents') {
         $conn->close();
     } else {
         echo json_encode([]);
+    }
+    exit();
+}
+
+// ============================================================
+// CLEAR DATA
+// ============================================================
+if ($action === 'clear_data') {
+    $conn = getDB();
+    if ($conn) {
+        $conn->query("TRUNCATE TABLE noise_readings");
+        $conn->close();
+        echo json_encode(["success" => true, "message" => "Data cleared"]);
+    } else {
+        echo json_encode(["success" => false, "error" => "Database connection failed"]);
     }
     exit();
 }
