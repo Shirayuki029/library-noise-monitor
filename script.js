@@ -9,8 +9,9 @@ let port = null;
 let isConnected = false;
 let reader = null;
 
-// API URL - CHANGE THIS TO YOUR FOLDER NAME
-const API_URL = 'http://localhost/smart_library/api.php';
+// ===== FIX: Use Railway API URL =====
+// Use relative path - works on both local and Railway
+const API_URL = '/api.php';
 
 // ============================================================
 // DOM ELEMENTS
@@ -250,7 +251,7 @@ async function saveIncident(sound, percent) {
 }
 
 // ============================================================
-// ARDUINO FUNCTIONS - FIXED sendCommand
+// ARDUINO FUNCTIONS
 // ============================================================
 
 async function connectSerial() {
@@ -291,11 +292,7 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ============================================================
-// FIXED: sendCommand - Properly sends data to Arduino
-// ============================================================
 async function sendCommand(command, value) {
-    // Check if connected
     if (!port || !isConnected) {
         addSerialMessage(`⚠️ Not connected. Command: ${command} ${value || ''}`);
         showAlert('error', '❌', 'Not Connected', 'Please connect to Arduino first.');
@@ -303,10 +300,8 @@ async function sendCommand(command, value) {
     }
     
     try {
-        // Get a fresh writer each time
         const writer = port.writable.getWriter();
         
-        // Build the command message
         let msg;
         if (value !== undefined) {
             msg = `CMD:{"command":"${command}","value":${value}}\n`;
@@ -317,11 +312,8 @@ async function sendCommand(command, value) {
         console.log('📤 SENDING:', msg);
         addSerialMessage(`📤 Sending: ${command} ${value !== undefined ? '= ' + value : ''}`);
         
-        // Send the message - encode as UTF-8
         const encoder = new TextEncoder();
         await writer.write(encoder.encode(msg));
-        
-        // IMPORTANT: Release the writer
         writer.releaseLock();
         
         addSerialMessage(`✅ Command sent successfully`);
@@ -374,7 +366,6 @@ async function readSerialData() {
         addSerialMessage(`❌ Read error: ${err.message}`);
     }
     
-    // Cleanup
     isConnected = false;
     elements.statusText.className = 'status-badge disconnected';
     elements.statusText.innerHTML = '⚫ Disconnected';
@@ -392,7 +383,6 @@ function processLine(line) {
     
     console.log('📥 RAW LINE:', line);
     
-    // ===== CHECK FOR COMMAND RESPONSE =====
     if (line.includes('"command"')) {
         try {
             let jsonStr = line;
@@ -443,7 +433,6 @@ function processLine(line) {
         return;
     }
     
-    // ===== CHECK FOR INCIDENT =====
     if (line.startsWith('INCIDENT:')) {
         let data = line.substring(9).trim();
         let parts = data.split(',');
@@ -452,18 +441,15 @@ function processLine(line) {
             let sound = parts[1] || '0';
             let percent = parts.length > 2 ? parts[2] : '0';
             addSerialMessage(`🚨 INCIDENT #${count}: ${sound} (${percent}%)`);
-            // Save incident to database
             saveIncident(sound, percent);
         }
         return;
     }
     
-    // ===== PARSE DATA LINE =====
     if (line.startsWith('DATA:')) {
         let data = line.substring(5).trim();
         console.log('📥 DATA:', data);
         
-        // Parse the data - it should be comma separated
         let parts = data.split(',').filter(p => p.length > 0);
         console.log('📊 Parts:', parts);
         
@@ -478,13 +464,11 @@ function processLine(line) {
             
             console.log(`📊 SOUND: ${sound}, PERCENT: ${percent}%, STATUS: ${status}, VIOLATIONS: ${violations}`);
             
-            // Update violation count
             if (elements.violationsCount) {
                 elements.violationsCount.textContent = violations;
                 elements.violationsCount.style.color = violations > 0 ? '#ef4444' : '#a5b4fc';
             }
             
-            // Update current violations in stats
             if (elements.currentViolations) {
                 elements.currentViolations.textContent = violations;
             }
@@ -498,7 +482,6 @@ function processLine(line) {
             return;
         }
         
-        // If less than 7 parts, try to parse with fewer
         if (parts.length >= 3) {
             const sound = parseInt(parts[0]) || 0;
             const percent = parseInt(parts[1]) || 0;
@@ -511,7 +494,6 @@ function processLine(line) {
         }
     }
     
-    // ===== UNKNOWN =====
     if (line.length > 0 && line !== 'READY' && !line.includes('Noise Monitor Started')) {
         console.log('⚠️ Unknown line:', line);
     }
@@ -524,21 +506,18 @@ function processLine(line) {
 function updateUI(sound, percent, status, threshold, violations, baseline, sensitivity) {
     console.log('🔄 UPDATING UI:', { sound, percent, status, threshold, violations, baseline, sensitivity });
     
-    // Sound value
     const soundEl = document.getElementById('soundValue');
     if (soundEl) {
         soundEl.textContent = sound;
         soundEl.style.color = percent > 70 ? '#ef4444' : percent > 40 ? '#eab308' : '#22c55e';
     }
     
-    // Percent value
     const percentEl = document.getElementById('percentValue');
     if (percentEl) {
         percentEl.textContent = percent;
         percentEl.style.color = percent > 70 ? '#ef4444' : percent > 40 ? '#eab308' : '#a5b4fc';
     }
     
-    // Sound bar
     const barEl = document.getElementById('soundBar');
     if (barEl) {
         const width = Math.min(percent, 100);
@@ -548,7 +527,6 @@ function updateUI(sound, percent, status, threshold, violations, baseline, sensi
                                   'linear-gradient(90deg, #22c55e, #16a34a)';
     }
     
-    // Status badge
     const badgeEl = document.getElementById('statusBadge');
     if (badgeEl) {
         if (status === 'NOISE' || status === 'NOISE!') {
@@ -563,22 +541,18 @@ function updateUI(sound, percent, status, threshold, violations, baseline, sensi
         }
     }
     
-    // Violations
     const vioEl = document.getElementById('violationsCount');
     if (vioEl) {
         vioEl.textContent = violations;
         vioEl.style.color = violations > 0 ? '#ef4444' : '#a5b4fc';
     }
     
-    // Baseline
     const baseEl = document.getElementById('baselineValue');
     if (baseEl) baseEl.textContent = baseline;
     
-    // Sensitivity
     const sensEl = document.getElementById('sensitivityValue');
     if (sensEl) sensEl.textContent = sensitivity.toFixed(2);
     
-    // Threshold
     const thrEl = document.getElementById('thresholdDisplay');
     if (thrEl) thrEl.textContent = threshold;
 }
@@ -635,7 +609,6 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAllStats();
     loadIncidents();
     
-    // Close alert on Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeAlert();
     });
@@ -644,10 +617,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.target === this) closeAlert();
     });
     
-    // Connect button
     elements.connectBtn?.addEventListener('click', connectSerial);
     
-    // Threshold slider
     elements.thresholdSlider?.addEventListener('input', function(e) {
         const val = parseInt(e.target.value);
         elements.thresholdValue.textContent = val;
@@ -657,7 +628,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (elements.thresholdDisplay) elements.thresholdDisplay.textContent = val;
     });
     
-    // Apply Threshold
     document.getElementById('applyThresholdBtn')?.addEventListener('click', async function() {
         const val = parseInt(elements.thresholdSlider.value);
         addSerialMessage(`📤 Applying threshold: ${val}`);
@@ -669,7 +639,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Reset Threshold
     document.getElementById('resetThresholdBtn')?.addEventListener('click', async function() {
         const val = 150;
         elements.thresholdSlider.value = val;
@@ -683,7 +652,6 @@ document.addEventListener('DOMContentLoaded', function() {
         showAlert('info', '🔄', 'Threshold Reset', `Threshold reset to ${val}`);
     });
     
-    // Sensitivity slider
     elements.sensitivitySlider?.addEventListener('input', function(e) {
         const val = parseFloat(e.target.value);
         elements.sensitivityVal.textContent = val.toFixed(1);
@@ -693,7 +661,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (elements.sensitivityValue) elements.sensitivityValue.textContent = val.toFixed(1);
     });
     
-    // Apply Sensitivity
     document.getElementById('applySensitivityBtn')?.addEventListener('click', async function() {
         const val = parseFloat(elements.sensitivitySlider.value);
         addSerialMessage(`📤 Applying sensitivity: ${val}`);
@@ -705,7 +672,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Reset Sensitivity
     document.getElementById('resetSensitivityBtn')?.addEventListener('click', async function() {
         const val = 1.0;
         elements.sensitivitySlider.value = val;
@@ -719,37 +685,31 @@ document.addEventListener('DOMContentLoaded', function() {
         showAlert('info', '🔄', 'Sensitivity Reset', `Sensitivity reset to ${val}`);
     });
     
-    // Reset Violations
     document.getElementById('resetViolationsBtn')?.addEventListener('click', async function() {
         addSerialMessage('🔄 Resetting violations...');
         await sendCommand('RESET_VIOLATIONS');
     });
     
-    // Recalibrate
     document.getElementById('recalibrateBtn')?.addEventListener('click', async function() {
         addSerialMessage('📡 Recalibrating sensor...');
         await sendCommand('RECALIBRATE');
         showAlert('warning', '📡', 'Recalibrating', 'Please keep the area quiet for 10 seconds...');
     });
     
-    // Get Status
     document.getElementById('getStatusBtn')?.addEventListener('click', async function() {
         addSerialMessage('📊 Getting status...');
         await sendCommand('STATUS');
     });
     
-    // Clear Serial
     document.getElementById('clearSerialBtn')?.addEventListener('click', function() {
         const serialOutput = document.getElementById('serialOutput');
         if (serialOutput) serialOutput.innerHTML = '<div class="empty-message">Cleared...</div>';
     });
     
-    // Export
     document.getElementById('exportDataBtn')?.addEventListener('click', function() {
         showAlert('info', '📊', 'Data Export', 'Data is in your MySQL database!\nUse phpMyAdmin to view: noise_monitor database');
     });
     
-    // Clear Data
     document.getElementById('clearDataBtn')?.addEventListener('click', async function() {
         if (confirm('⚠️ WARNING: This will delete ALL data from database! Are you sure?')) {
             try {
@@ -773,11 +733,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Test DB
     document.getElementById('testDbBtn')?.addEventListener('click', testDatabaseConnection);
 });
 
-// Make functions globally accessible
 window.sendCommand = sendCommand;
 window.addSerialMessage = addSerialMessage;
 window.connectSerial = connectSerial;
