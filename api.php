@@ -42,12 +42,11 @@ if ($action === 'test') {
 }
 
 // ============================================================
-// PING ARDUINO - Check REAL-TIME data (last 10 seconds only)
+// PING ARDUINO
 // ============================================================
 if ($action === 'ping_arduino') {
     $conn = getDB();
     if ($conn) {
-        // Only count data from the last 10 seconds (real-time)
         $result = $conn->query("SELECT COUNT(*) as count FROM noise_readings WHERE created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)");
         if ($result) {
             $row = $result->fetch_assoc();
@@ -105,7 +104,7 @@ if ($action === 'get_latest') {
 // ============================================================
 // SAVE READING
 // ============================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'save_reading') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $raw_input = file_get_contents('php://input');
     $data = json_decode($raw_input, true);
     
@@ -143,6 +142,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'save_reading') {
         }
     } else {
         echo json_encode(["success" => false, "error" => "Invalid noise level: $noise_level"]);
+    }
+    exit();
+}
+
+// ============================================================
+// GET STATS
+// ============================================================
+if ($action === 'get_stats') {
+    $conn = getDB();
+    if ($conn) {
+        $result = $conn->query("SELECT COUNT(*) as total FROM noise_readings");
+        $row = $result->fetch_assoc();
+        echo json_encode(['total' => (int)($row['total'] ?? 0)]);
+        $conn->close();
+    } else {
+        echo json_encode(['error' => 'Database connection failed']);
     }
     exit();
 }
