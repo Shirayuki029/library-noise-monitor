@@ -7,12 +7,12 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
-// Use INTERNAL connection (app is ON Railway)
-$host = 'rmysql-c0oj.railway.internal';  // From your URL
-$port = 3306;                      // From your URL
-$dbname = 'noise_monitor';          // From your URL
-$user = 'root';                     // Username
-$pass = 'RVIbaHswZzBJrQVhBQGWNwXsOfeoRrnU';
+// Using YOUR exact Railway variables
+$host = 'mysql-c0oj.railway.internal';  // ← Your specific host
+$port = 3306;
+$dbname = 'noise_monitor';
+$user = 'root';
+$pass = 'RVIbaHswZzBJrQVhBQGWnWxSOfeoRrnU'; // ← Your password
 
 // Database configuration
 define('DB_HOST', $host);
@@ -52,6 +52,16 @@ function getDB() {
     }
     
     return $conn;
+}
+
+// ===== CHECK DATABASE CONNECTION =====
+function checkDBConnection() {
+    $conn = getDB();
+    if ($conn) {
+        $conn->close();
+        return true;
+    }
+    return false;
 }
 
 // ===== AUTHENTICATION FUNCTIONS =====
@@ -122,5 +132,9 @@ function getAllUsers() {
     }
     $conn->close();
     return $users;
+}
+
+function debug_log($message) {
+    error_log($message);
 }
 ?>
