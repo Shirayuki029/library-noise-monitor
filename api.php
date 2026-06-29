@@ -1,4 +1,7 @@
 <?php
+// api.php - Fixed for Railway
+require_once 'config.php';  // Use Railway database config
+
 session_start();
 
 header("Access-Control-Allow-Origin: *");
@@ -10,11 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
 }
-
-define('DB_HOST', 'localhost');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_NAME', 'noise_monitor');
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
@@ -28,26 +26,16 @@ if (!in_array($action, $public_actions)) {
     }
 }
 
+// ===== USE getDB() from config.php =====
 function getDBConnection() {
-    $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
-    
-    if ($conn->connect_error) {
-        return [
-            'error' => true,
-            'message' => 'Connection failed: ' . $conn->connect_error,
-            'code' => $conn->connect_errno
-        ];
-    }
-    
-    return $conn;
+    return getDB();
 }
 
 $db = getDBConnection();
 
-if (is_array($db) && isset($db['error']) && $db['error'] === true) {
+if (!$db) {
     echo json_encode([
-        "error" => $db['message'],
-        "code" => $db['code'] ?? 0,
+        "error" => "Database connection failed",
         "host" => DB_HOST,
         "database" => DB_NAME
     ]);
@@ -201,7 +189,6 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'total_violations' => (int)$row['total_violations']
             ];
         }
-        // Always return both areas with defaults
         if (!isset($stats['reading'])) $stats['reading'] = ['total_readings' => 0, 'total_violations' => 0];
         if (!isset($stats['silent'])) $stats['silent'] = ['total_readings' => 0, 'total_violations' => 0];
         echo json_encode($stats);
