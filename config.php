@@ -15,7 +15,7 @@ $user = 'root';                    // Your database user
 
 // !!! IMPORTANT: Copy the EXACT password from your Railway Variables tab !!!
 // DO NOT type it manually. Copy and paste it directly.
-$pass = 'PASTE_YOUR_EXACT_MYSQLPASSWORD_HERE';
+$pass = 'zVsqVputbGKVtSvUkDJJfnZRpcYqkBFl';
 
 define('DB_HOST', $host);
 define('DB_USER', $user);
