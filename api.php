@@ -7,6 +7,10 @@ header("Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json");
 
+// Turn off error display - we want JSON responses
+ini_set('display_errors', 0);
+error_reporting(0);
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
@@ -104,7 +108,7 @@ if ($action === 'get_latest') {
 // ============================================================
 // SAVE READING
 // ============================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'save_reading') {
     $raw_input = file_get_contents('php://input');
     $data = json_decode($raw_input, true);
     
@@ -116,11 +120,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         parse_str($raw_input, $data);
     }
     
+    // Try to get noise_level from various formats
     $noise_level = 0;
     if (isset($data['noise_level'])) {
         $noise_level = intval($data['noise_level']);
     } elseif (isset($data['sound'])) {
         $noise_level = intval($data['sound']);
+    } elseif (isset($data['sound_value'])) {
+        $noise_level = intval($data['sound_value']);
+    }
+    
+    // If still 0, try to find any numeric value
+    if ($noise_level === 0) {
+        foreach ($data as $key => $value) {
+            if (is_numeric($value) && intval($value) > 0 && intval($value) < 1024) {
+                $noise_level = intval($value);
+                break;
+            }
+        }
     }
     
     if ($noise_level > 0 && $noise_level <= 1023) {
@@ -158,6 +175,50 @@ if ($action === 'get_stats') {
         $conn->close();
     } else {
         echo json_encode(['error' => 'Database connection failed']);
+    }
+    exit();
+}
+
+// ============================================================
+// GET ALL STATS
+// ============================================================
+if ($action === 'get_all_stats') {
+    $conn = getDB();
+    if ($conn) {
+        $result = $conn->query("SELECT COUNT(*) as total_readings FROM noise_readings");
+        $row = $result->fetch_assoc();
+        echo json_encode([
+            'reading' => [
+                'total_readings' => (int)($row['total_readings'] ?? 0),
+                'total_violations' => 0
+            ],
+            'silent' => [
+                'total_readings' => 0,
+                'total_violations' => 0
+            ]
+        ]);
+        $conn->close();
+    } else {
+        echo json_encode(['error' => 'Database connection failed']);
+    }
+    exit();
+}
+
+// ============================================================
+// GET INCIDENTS
+// ============================================================
+if ($action === 'get_incidents') {
+    $conn = getDB();
+    if ($conn) {
+        $result = $conn->query("SELECT * FROM noise_readings WHERE noise_level > 150 ORDER BY id DESC LIMIT 10");
+        $incidents = [];
+        while ($row = $result->fetch_assoc()) {
+            $incidents[] = $row;
+        }
+        echo json_encode($incidents);
+        $conn->close();
+    } else {
+        echo json_encode([]);
     }
     exit();
 }
