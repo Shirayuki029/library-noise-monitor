@@ -7,12 +7,12 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
-// Use Railway's internal host (works ONLY inside Railway)
-$host = 'mysql.railway.internal';
-$port = 3306;
-$dbname = 'noise_monitor';
-$user = 'root';
-$pass = 'zVsqVputbGKVtSvUkDJJfnZRpcYqkBFl'; // Your password
+// Use INTERNAL connection (app is ON Railway)
+$host = 'mysql.railway.internal';  // Internal host
+$port = 3306;                       // Internal port
+$dbname = 'railway';                // Database name
+$user = 'root';                     // Username
+$pass = 'RVIbaHswZzBJrQVhBQGWNwXsOfeoRrnU'; // NEW PASSWORD
 
 // Database configuration
 define('DB_HOST', $host);
