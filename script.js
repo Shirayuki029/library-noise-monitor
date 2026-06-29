@@ -265,12 +265,15 @@ async function saveIncident(sound, percent) {
 }
 
 // ============================================================
-// ARDUINO FUNCTIONS - FIXED
+// ARDUINO CONNECTION - FIXED
 // ============================================================
 
 async function connectSerial() {
     // Check if Web Serial is supported
-    if (!isSerialSupported()) {
+    if (!('serial' in navigator)) {
+        addSerialMessage('❌ Web Serial API is NOT supported in this browser.');
+        addSerialMessage('📌 Please use Chrome or Edge with HTTPS.');
+        showAlert('error', '❌', 'Not Supported', 'Web Serial API is not supported. Please use Chrome or Edge.');
         return;
     }
     
@@ -278,18 +281,24 @@ async function connectSerial() {
         addSerialMessage('🔌 Requesting serial port...');
         addSerialMessage('📌 Please select the COM port your Arduino is connected to.');
         
-        // Request a serial port
+        // Request a serial port - this triggers the browser popup
         port = await navigator.serial.requestPort();
         
         addSerialMessage('📡 Opening connection at 9600 baud...');
         await port.open({ baudRate: 9600 });
         
         isConnected = true;
-        elements.statusText.className = 'status-badge connected';
-        elements.statusText.innerHTML = '🟢 Connected';
-        elements.connectBtn.textContent = '✅ Connected';
-        elements.connectBtn.disabled = true;
-        elements.connectBtn.style.background = '#22c55e';
+        
+        // Update UI
+        if (elements.statusText) {
+            elements.statusText.className = 'status-badge connected';
+            elements.statusText.innerHTML = '🟢 Connected';
+        }
+        if (elements.connectBtn) {
+            elements.connectBtn.textContent = '✅ Connected';
+            elements.connectBtn.disabled = true;
+            elements.connectBtn.style.background = '#22c55e';
+        }
         
         addSerialMessage('✅ Connected to Arduino!');
         addSerialMessage('📊 Waiting for data...');
@@ -313,6 +322,17 @@ async function connectSerial() {
             showAlert('error', '❌', 'Connection Error', err.message);
         }
         isConnected = false;
+        
+        // Reset UI
+        if (elements.statusText) {
+            elements.statusText.className = 'status-badge disconnected';
+            elements.statusText.innerHTML = '⚫ Disconnected';
+        }
+        if (elements.connectBtn) {
+            elements.connectBtn.textContent = '🔌 Connect to Arduino';
+            elements.connectBtn.disabled = false;
+            elements.connectBtn.style.background = '';
+        }
     }
 }
 
@@ -380,6 +400,8 @@ async function readSerialData() {
                 for (const line of lines) {
                     const trimmed = line.trim();
                     if (trimmed) {
+                        console.log('📥 Received:', trimmed);
+                        addSerialMessage(`📥 ${trimmed}`);
                         processLine(trimmed);
                     }
                 }
@@ -396,11 +418,15 @@ async function readSerialData() {
     
     // Cleanup on disconnect
     isConnected = false;
-    elements.statusText.className = 'status-badge disconnected';
-    elements.statusText.innerHTML = '⚫ Disconnected';
-    elements.connectBtn.textContent = '🔌 Connect to Arduino';
-    elements.connectBtn.disabled = false;
-    elements.connectBtn.style.background = '';
+    if (elements.statusText) {
+        elements.statusText.className = 'status-badge disconnected';
+        elements.statusText.innerHTML = '⚫ Disconnected';
+    }
+    if (elements.connectBtn) {
+        elements.connectBtn.textContent = '🔌 Connect to Arduino';
+        elements.connectBtn.disabled = false;
+        elements.connectBtn.style.background = '';
+    }
     addSerialMessage('⚠️ Disconnected from Arduino');
 }
 
@@ -792,5 +818,6 @@ window.addSerialMessage = addSerialMessage;
 window.connectSerial = connectSerial;
 window.showAlert = showAlert;
 window.closeAlert = closeAlert;
+window.isSerialSupported = isSerialSupported;
 
 console.log('✅ Dashboard loaded successfully!');
