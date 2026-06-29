@@ -1,5 +1,5 @@
 <?php
-// api.php - Fixed to accept ALL data formats
+// api.php - Fixed to match your database columns
 require_once 'config.php';
 
 header("Access-Control-Allow-Origin: *");
@@ -20,7 +20,8 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 if ($action === 'get_latest') {
     $conn = getDB();
     if ($conn) {
-        $result = $conn->query("SELECT noise_level, created_at FROM noise_readings ORDER BY id DESC LIMIT 1");
+        // Try to get from sound_value (your column name)
+        $result = $conn->query("SELECT sound_value as noise_level, created_at FROM noise_readings ORDER BY id DESC LIMIT 1");
         if ($result && $result->num_rows > 0) {
             $row = $result->fetch_assoc();
             $noise_level = $row['noise_level'];
@@ -29,10 +30,11 @@ if ($action === 'get_latest') {
             echo json_encode([
                 'noise_level' => $noise_level,
                 'percentage' => $percentage,
+                'status' => $percentage < 30 ? 'QUIET' : ($percentage < 60 ? 'MODERATE' : 'LOUD'),
                 'time' => $row['created_at']
             ]);
         } else {
-            echo json_encode(['noise_level' => 0, 'percentage' => 0, 'time' => null]);
+            echo json_encode(['noise_level' => 0, 'percentage' => 0, 'status' => 'QUIET', 'time' => null]);
         }
         $conn->close();
     } else {
@@ -67,16 +69,15 @@ if ($action === 'ping_arduino') {
 if ($action === 'get_stats') {
     $conn = getDB();
     if ($conn) {
-        $result = $conn->query("SELECT COUNT(*) as total, AVG(noise_level) as avg_noise FROM noise_readings");
+        $result = $conn->query("SELECT COUNT(*) as total FROM noise_readings");
         if ($result) {
             $stats = $result->fetch_assoc();
             echo json_encode([
                 'total' => (int)($stats['total'] ?? 0),
-                'avg_noise' => (float)($stats['avg_noise'] ?? 0),
                 'violations' => 0
             ]);
         } else {
-            echo json_encode(['total' => 0, 'avg_noise' => 0, 'violations' => 0]);
+            echo json_encode(['total' => 0, 'violations' => 0]);
         }
         $conn->close();
     } else {
@@ -139,7 +140,7 @@ if ($action === 'get_all_stats') {
 if ($action === 'get_incidents') {
     $conn = getDB();
     if ($conn) {
-        $result = $conn->query("SELECT * FROM noise_readings WHERE noise_level > 150 ORDER BY id DESC LIMIT 10");
+        $result = $conn->query("SELECT * FROM noise_readings WHERE sound_value > 150 ORDER BY id DESC LIMIT 10");
         $incidents = [];
         if ($result) {
             while ($row = $result->fetch_assoc()) {
@@ -155,7 +156,7 @@ if ($action === 'get_incidents') {
 }
 
 // ============================================================
-// GET TEST
+// TEST
 // ============================================================
 if ($action === 'test') {
     $conn = getDB();
@@ -180,7 +181,7 @@ if ($action === 'test') {
 }
 
 // ============================================================
-// SAVE READING - FIXED
+// SAVE READING - FIXED FOR YOUR DATABASE
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Get raw input
@@ -202,53 +203,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     error_log("Parsed data: " . print_r($data, true));
     
-    // Extract noise level
-    $noise_level = 0;
+    // Extract values
+    $sound_value = 0;
+    $percent_value = 0;
+    $status = 'QUIET';
+    $threshold = 150;
+    $sensitivity = 1.0;
+    $area = 'reading';
+    $user_id = 1;
     
+    // Get sound value from various possible keys
     if (isset($data['noise_level'])) {
-        $noise_level = intval($data['noise_level']);
+        $sound_value = intval($data['noise_level']);
     } elseif (isset($data['sound'])) {
-        $noise_level = intval($data['sound']);
+        $sound_value = intval($data['sound']);
     } elseif (isset($data['sound_value'])) {
-        $noise_level = intval($data['sound_value']);
+        $sound_value = intval($data['sound_value']);
     } elseif (isset($data['value'])) {
-        $noise_level = intval($data['value']);
+        $sound_value = intval($data['value']);
     }
     
     // If still 0, try to find any numeric value
-    if ($noise_level === 0) {
+    if ($sound_value === 0) {
         foreach ($data as $key => $value) {
             if (is_numeric($value) && intval($value) > 0 && intval($value) < 1024) {
-                $noise_level = intval($value);
+                $sound_value = intval($value);
                 break;
             }
         }
     }
     
-    error_log("Final noise_level: " . $noise_level);
+    // Get percent if provided, otherwise calculate
+    if (isset($data['percent'])) {
+        $percent_value = intval($data['percent']);
+    } elseif (isset($data['percent_value'])) {
+        $percent_value = intval($data['percent_value']);
+    } else {
+        $percent_value = round(($sound_value / 1023) * 100);
+    }
     
-    // SAVE TO DATABASE
-    if ($noise_level > 0 && $noise_level <= 1023) {
+    // Get status
+    if (isset($data['status'])) {
+        $status = $data['status'];
+    } else {
+        $status = $percent_value > 70 ? 'NOISE' : ($percent_value > 40 ? 'WARNING' : 'QUIET');
+    }
+    
+    // Get other values if provided
+    if (isset($data['threshold'])) $threshold = intval($data['threshold']);
+    if (isset($data['sensitivity'])) $sensitivity = floatval($data['sensitivity']);
+    if (isset($data['area'])) $area = $data['area'];
+    if (isset($data['user_id'])) $user_id = intval($data['user_id']);
+    
+    error_log("Final: sound=$sound_value, percent=$percent_value, status=$status, threshold=$threshold, sensitivity=$sensitivity, area=$area, user_id=$user_id");
+    
+    // SAVE TO DATABASE - USING YOUR COLUMN NAMES
+    if ($sound_value > 0 && $sound_value <= 1023) {
         $conn = getDB();
         if ($conn) {
-            // Check if noise_level column exists
-            $check = $conn->query("SHOW COLUMNS FROM noise_readings LIKE 'noise_level'");
-            if ($check && $check->num_rows > 0) {
-                $stmt = $conn->prepare("INSERT INTO noise_readings (user_id, noise_level, created_at) VALUES (?, ?, NOW())");
-                $user_id = isset($data['user_id']) ? intval($data['user_id']) : 1;
-                $stmt->bind_param("ii", $user_id, $noise_level);
-            } else {
-                // Try sound_value column
-                $stmt = $conn->prepare("INSERT INTO noise_readings (user_id, sound_value, created_at) VALUES (?, ?, NOW())");
-                $user_id = isset($data['user_id']) ? intval($data['user_id']) : 1;
-                $stmt->bind_param("ii", $user_id, $noise_level);
-            }
+            $stmt = $conn->prepare("INSERT INTO noise_readings (user_id, sound_value, percent_value, status, threshold, sensitivity, area, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
+            $stmt->bind_param("iisidss", $user_id, $sound_value, $percent_value, $status, $threshold, $sensitivity, $area);
             
             if ($stmt->execute()) {
-                error_log("✅ Data saved: " . $noise_level);
+                error_log("✅ Data saved! sound=$sound_value, percent=$percent_value, status=$status");
                 echo json_encode([
                     "success" => true,
-                    "noise_level" => $noise_level,
+                    "sound" => $sound_value,
+                    "percent" => $percent_value,
+                    "status" => $status,
                     "message" => "Data saved successfully"
                 ]);
             } else {
@@ -263,8 +285,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(["success" => false, "error" => "Database connection failed"]);
         }
     } else {
-        error_log("⚠️ Invalid noise level: " . $noise_level);
-        echo json_encode(["success" => false, "error" => "Invalid noise level: " . $noise_level]);
+        error_log("⚠️ Invalid sound value: " . $sound_value);
+        echo json_encode(["success" => false, "error" => "Invalid sound value: " . $sound_value]);
     }
     exit();
 }
