@@ -7,14 +7,12 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
-// Using INTERNAL connection (app is ON Railway)
-$host = 'mysql-c0oj.railway.internal';  // Internal host
-$port = 3306;                            // Internal port
+$host = 'mysql-c0oj.railway.internal';
+$port = 3306;
 $dbname = 'noise_monitor';
 $user = 'root';
 $pass = 'RVIbaHswZzBJrQVhBQGWNwXsOfeoRrnU';
 
-// Database configuration
 define('DB_HOST', $host);
 define('DB_USER', $user);
 define('DB_PASS', $pass);
@@ -22,16 +20,15 @@ define('DB_NAME', $dbname);
 define('DB_PORT', $port);
 
 // OTP Configuration
-define('OTP_EXPIRY', 300); // 5 minutes
+define('OTP_EXPIRY', 300);
 
 // Session timeout
-define('SESSION_TIMEOUT', 1800); // 30 minutes
+define('SESSION_TIMEOUT', 1800);
 
 // ===== CHECK SESSION TIMEOUT =====
 function checkSessionTimeout() {
     if (isset($_SESSION['last_activity'])) {
         $inactive_time = time() - $_SESSION['last_activity'];
-        
         if ($inactive_time > SESSION_TIMEOUT) {
             session_unset();
             session_destroy();
@@ -44,15 +41,15 @@ function checkSessionTimeout() {
 
 // ===== DATABASE CONNECTION =====
 function getDB() {
+    // Create connection
     $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
     
+    // Check connection
     if ($conn->connect_error) {
         error_log("Database connection failed: " . $conn->connect_error);
-        error_log("Host: " . DB_HOST . " Port: " . DB_PORT);
         return null;
     }
     
-    error_log("✅ Database connected successfully!");
     return $conn;
 }
 
