@@ -9,7 +9,7 @@ if (session_status() === PHP_SESSION_NONE) {
 // ===== RAILWAY DATABASE CONFIGURATION =====
 // Use INTERNAL connection (app is ON Railway)
 $host = 'rmysql-c0oj.railway.internal';  // From your URL
-$port = 46787;                      // From your URL
+$port = 3306;                      // From your URL
 $dbname = 'noise_monitor';          // From your URL
 $user = 'root';                     // Username
 $pass = 'RVIbaHswZzBJrQVhBQGWNwXsOfeoRrnU';
