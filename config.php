@@ -7,31 +7,50 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ===== RAILWAY DATABASE CONFIGURATION =====
+// Use Railway's internal host (works ONLY inside Railway)
 $host = 'mysql.railway.internal';
 $port = 3306;
 $dbname = 'noise_monitor';
 $user = 'root';
-$pass = 'zVsqVputbGKVtSvUkDJJfnZRpcYqkBFl';
+$pass = 'zVsqVputbGKVtSvUkDJJfnZRpcYqkBFl'; // Your password
 
+// Database configuration
 define('DB_HOST', $host);
 define('DB_USER', $user);
 define('DB_PASS', $pass);
 define('DB_NAME', $dbname);
 define('DB_PORT', $port);
 
-// ===== OTP CONFIGURATION =====
+// OTP Configuration
 define('OTP_EXPIRY', 300); // 5 minutes
 
-// ===== SESSION TIMEOUT =====
+// Session timeout
 define('SESSION_TIMEOUT', 1800); // 30 minutes
+
+// ===== CHECK SESSION TIMEOUT =====
+function checkSessionTimeout() {
+    if (isset($_SESSION['last_activity'])) {
+        $inactive_time = time() - $_SESSION['last_activity'];
+        
+        if ($inactive_time > SESSION_TIMEOUT) {
+            session_unset();
+            session_destroy();
+            header("Location: login.php?timeout=1");
+            exit();
+        }
+    }
+    $_SESSION['last_activity'] = time();
+}
 
 // ===== DATABASE CONNECTION =====
 function getDB() {
     $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
+    
     if ($conn->connect_error) {
         error_log("Database connection failed: " . $conn->connect_error);
         return null;
     }
+    
     return $conn;
 }
 
@@ -45,6 +64,7 @@ function isAdmin() {
 }
 
 function requireAuth() {
+    checkSessionTimeout();
     if (!isAuthenticated()) {
         header("Location: login.php");
         exit();
@@ -52,6 +72,7 @@ function requireAuth() {
 }
 
 function requireAdmin() {
+    checkSessionTimeout();
     requireAuth();
     if (!isAdmin()) {
         header("Location: dashboard.php");
@@ -64,6 +85,18 @@ function generateOTP() {
 }
 
 // ===== USER FUNCTIONS =====
+function logActivity($user_id, $action, $details = '') {
+    $conn = getDB();
+    if (!$conn) return;
+    
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $stmt = $conn->prepare("INSERT INTO user_activity (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("isss", $user_id, $action, $details, $ip);
+    $stmt->execute();
+    $stmt->close();
+    $conn->close();
+}
+
 function getUser($id) {
     $conn = getDB();
     if (!$conn) return null;
@@ -89,21 +122,5 @@ function getAllUsers() {
     }
     $conn->close();
     return $users;
-}
-
-function logActivity($user_id, $action, $details = '') {
-    $conn = getDB();
-    if (!$conn) return;
-    
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-    $stmt = $conn->prepare("INSERT INTO user_activity (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)");
-    $stmt->bind_param("isss", $user_id, $action, $details, $ip);
-    $stmt->execute();
-    $stmt->close();
-    $conn->close();
-}
-
-function debug_log($message) {
-    error_log($message);
 }
 ?>
