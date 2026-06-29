@@ -9,8 +9,7 @@ let port = null;
 let isConnected = false;
 let reader = null;
 
-// ===== FIX: Use Railway API URL =====
-// Use relative path - works on both local and Railway
+// ===== API URL for Railway =====
 const API_URL = '/api.php';
 
 // ============================================================
@@ -63,6 +62,21 @@ function showAlert(type, icon, title, message) {
 function closeAlert() {
     const overlay = document.getElementById('alertOverlay');
     if (overlay) overlay.classList.remove('show');
+}
+
+// ============================================================
+// CHECK IF WEB SERIAL API IS AVAILABLE
+// ============================================================
+function isSerialSupported() {
+    if ('serial' in navigator) {
+        addSerialMessage('✅ Web Serial API is supported!');
+        return true;
+    } else {
+        addSerialMessage('❌ Web Serial API is NOT supported in this browser.');
+        addSerialMessage('📌 Please use Chrome or Edge with HTTPS.');
+        showAlert('error', '❌', 'Not Supported', 'Web Serial API is not supported. Please use Chrome or Edge with HTTPS.');
+        return false;
+    }
 }
 
 // ============================================================
@@ -251,12 +265,20 @@ async function saveIncident(sound, percent) {
 }
 
 // ============================================================
-// ARDUINO FUNCTIONS
+// ARDUINO FUNCTIONS - FIXED
 // ============================================================
 
 async function connectSerial() {
+    // Check if Web Serial is supported
+    if (!isSerialSupported()) {
+        return;
+    }
+    
     try {
         addSerialMessage('🔌 Requesting serial port...');
+        addSerialMessage('📌 Please select the COM port your Arduino is connected to.');
+        
+        // Request a serial port
         port = await navigator.serial.requestPort();
         
         addSerialMessage('📡 Opening connection at 9600 baud...');
@@ -267,9 +289,11 @@ async function connectSerial() {
         elements.statusText.innerHTML = '🟢 Connected';
         elements.connectBtn.textContent = '✅ Connected';
         elements.connectBtn.disabled = true;
+        elements.connectBtn.style.background = '#22c55e';
         
         addSerialMessage('✅ Connected to Arduino!');
         addSerialMessage('📊 Waiting for data...');
+        showAlert('success', '✅', 'Connected', 'Arduino connected successfully!');
         
         await delay(1000);
         
@@ -282,8 +306,12 @@ async function connectSerial() {
         // Start reading
         readSerialData();
     } catch (err) {
-        addSerialMessage(`❌ Error: ${err.message}`);
-        showAlert('error', '❌', 'Connection Error', err.message);
+        if (err.message.includes('cancelled') || err.message.includes('cancel')) {
+            addSerialMessage('⏹️ Connection cancelled by user.');
+        } else {
+            addSerialMessage(`❌ Error: ${err.message}`);
+            showAlert('error', '❌', 'Connection Error', err.message);
+        }
         isConnected = false;
     }
 }
@@ -366,11 +394,13 @@ async function readSerialData() {
         addSerialMessage(`❌ Read error: ${err.message}`);
     }
     
+    // Cleanup on disconnect
     isConnected = false;
     elements.statusText.className = 'status-badge disconnected';
     elements.statusText.innerHTML = '⚫ Disconnected';
     elements.connectBtn.textContent = '🔌 Connect to Arduino';
     elements.connectBtn.disabled = false;
+    elements.connectBtn.style.background = '';
     addSerialMessage('⚠️ Disconnected from Arduino');
 }
 
@@ -383,6 +413,7 @@ function processLine(line) {
     
     console.log('📥 RAW LINE:', line);
     
+    // Command responses
     if (line.includes('"command"')) {
         try {
             let jsonStr = line;
@@ -433,6 +464,7 @@ function processLine(line) {
         return;
     }
     
+    // Incidents
     if (line.startsWith('INCIDENT:')) {
         let data = line.substring(9).trim();
         let parts = data.split(',');
@@ -446,6 +478,7 @@ function processLine(line) {
         return;
     }
     
+    // Data lines
     if (line.startsWith('DATA:')) {
         let data = line.substring(5).trim();
         console.log('📥 DATA:', data);
@@ -604,6 +637,9 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Dashboard loaded!');
     addSerialMessage('🎯 System Ready! Click "Connect to Arduino" to start');
     
+    // Check Web Serial API support
+    isSerialSupported();
+    
     testDatabaseConnection();
     loadStats();
     loadAllStats();
@@ -617,8 +653,20 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.target === this) closeAlert();
     });
     
-    elements.connectBtn?.addEventListener('click', connectSerial);
+    // ===== CONNECT BUTTON - FIXED =====
+    const connectBtn = document.getElementById('connectBtn');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            console.log('🔌 Connect button clicked!');
+            addSerialMessage('🔌 Connect button clicked!');
+            connectSerial();
+        });
+    } else {
+        console.error('❌ Connect button not found!');
+    }
     
+    // ===== OTHER EVENT LISTENERS =====
     elements.thresholdSlider?.addEventListener('input', function(e) {
         const val = parseInt(e.target.value);
         elements.thresholdValue.textContent = val;
@@ -736,6 +784,9 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('testDbBtn')?.addEventListener('click', testDatabaseConnection);
 });
 
+// ============================================================
+// EXPOSE FUNCTIONS GLOBALLY
+// ============================================================
 window.sendCommand = sendCommand;
 window.addSerialMessage = addSerialMessage;
 window.connectSerial = connectSerial;
